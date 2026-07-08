@@ -14,10 +14,34 @@
  * @returns {Promise<{ stop: () => void }>}
  */
 export async function createCapture(onChunk) {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-  })
+  // getUserMedia can resolve with null or an empty-track stream in some
+  // WebView environments (Wails on macOS, sandboxed Electron builds) even
+  // when permission appears granted. Validate before touching AudioContext
+  // so the error is "no mic track" rather than a cryptic DOM exception.
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    })
+  } catch (err) {
+    // NotAllowedError = permission denied, NotFoundError = no mic hardware
+    const msg = err?.name === 'NotAllowedError'
+      ? 'Microphone permission denied — allow access in System Settings → Privacy → Microphone.'
+      : err?.name === 'NotFoundError'
+        ? 'No microphone found. Plug one in and try again.'
+        : `Microphone unavailable: ${err?.message || err}`
+    throw new Error(msg)
+  }
+
+  if (!stream || stream.getAudioTracks().length === 0) {
+    stream?.getTracks().forEach((t) => t.stop())
+    throw new Error('Microphone unavailable: browser returned an empty audio stream. Check System Settings → Privacy → Microphone.')
+  }
+
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 })
+  // Resume in case the AudioContext starts suspended (autoplay policy)
+  if (ctx.state === 'suspended') await ctx.resume()
+
   await ctx.audioWorklet.addModule('/pcm-capture-worklet.js')
 
   const source = ctx.createMediaStreamSource(stream)
@@ -34,6 +58,8 @@ export async function createCapture(onChunk) {
   mute.connect(ctx.destination)
 
   return {
+    stream,
+    ctx,   // exposed so callers can suspend/resume without destroying the stream
     stop() {
       stream.getTracks().forEach((t) => t.stop())
       ctx.close()
@@ -49,6 +75,10 @@ export async function createCapture(onChunk) {
  */
 export function createPlayback() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 })
+  // Resume immediately — some browsers start AudioContext suspended until
+  // a user-gesture tick; we're always called from a click handler so this
+  // is safe and prevents silent playback on first chunk.
+  if (ctx.state === 'suspended') ctx.resume()
   let nextPlayTime = 0
 
   return {

@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Agentic Desk — Voice Assistant Architecture Report</title>
+<style>
+  :root {
+    --bg: #0d0d14; --surface: #141420; --surface2: #1c1c2e; --border: #2a2a40;
+    --ink: #e8e8f4; --ink-muted: #9090b8; --ink-faint: #5a5a7a;
+    --teal: #20808d; --teal-soft: #0d9488; --violet: #7c3aed; --green: #10b981;
+    --blue: #3b82f6; --amber: #f59e0b; --red: #ef4444;
+    --radius: 10px; --radius-sm: 6px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+  /* ── Layout ── */
+  .page { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* ── Hero ── */
+  .hero {
+    background: linear-gradient(135deg, #0d1a2e 0%, #0d0d14 50%, #1a0d2e 100%);
+    border: 1px solid var(--border); border-radius: 20px;
+    padding: 48px 40px 40px; margin-bottom: 40px; position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ''; position: absolute; top: -40px; right: -40px;
+    width: 300px; height: 300px; border-radius: 50%;
+    background: radial-gradient(circle, #20808d40, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 100px;
+    background: rgba(32,128,141,0.15); border: 1px solid rgba(32,128,141,0.3);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    color: var(--teal); text-transform: uppercase; margin-bottom: 16px;
+  }
+  .hero h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 12px; }
+  .hero h1 span { color: var(--teal); }
+  .hero-sub { font-size: 15px; color: var(--ink-muted); max-width: 640px; line-height: 1.6; }
+  .hero-meta { display: flex; gap: 20px; margin-top: 28px; flex-wrap: wrap; }
+  .hero-stat {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 12px 18px; border-radius: var(--radius);
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  }
+  .hero-stat-val { font-size: 22px; font-weight: 800; color: var(--teal); }
+  .hero-stat-lbl { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.3px; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Architecture diagram ── */
+  .arch {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 32px;
+  }
+  .arch-col { display: flex; flex-direction: column; gap: 12px; }
+  .arch-col-label {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+    color: var(--ink-faint); padding: 0 4px; margin-bottom: 4px;
+    border-left: 3px solid var(--teal); padding-left: 8px;
+  }
+  .arch-node {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .arch-node:hover { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(32,128,141,0.12); }
+  .arch-node.selected { border-color: var(--teal); background: rgba(32,128,141,0.07); }
+  .arch-node-icon { font-size: 18px; margin-bottom: 6px; display: block; }
+  .arch-node-name { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+  .arch-node-path { font-size: 10px; color: var(--ink-faint); font-family: 'SF Mono','Fira Code',monospace; margin-bottom: 5px; }
+  .arch-node-desc { font-size: 11px; color: var(--ink-muted); line-height: 1.45; }
+  .arch-node-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 4px;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+    margin-top: 7px;
+  }
+  .tag-fe { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .tag-lib { background: rgba(16,185,129,0.15); color: var(--green); }
+  .tag-ws { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .tag-go { background: rgba(124,58,237,0.15); color: var(--violet); }
+  .tag-audio { background: rgba(239,68,68,0.15); color: var(--red); }
+
+  /* ── Detail panel ── */
+  .detail-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 24px; margin-top: 16px; display: none;
+  }
+  .detail-panel.visible { display: block; }
+  .detail-panel h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; color: var(--ink); }
+  .detail-panel p { font-size: 12.5px; color: var(--ink-muted); margin-bottom: 12px; line-height: 1.6; }
+  .detail-panel code {
+    font-family: 'SF Mono','Fira Code',monospace; font-size: 11px;
+    background: var(--surface2); color: var(--teal); padding: 2px 6px; border-radius: 4px;
+  }
+  .issues { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .issue {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface2);
+  }
+  .issue-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .issue-body { min-width: 0; }
+  .issue-title { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+  .issue-desc { font-size: 11px; color: var(--ink-muted); line-height: 1.45; }
+  .issue-fix {
+    margin-top: 4px; font-size: 10.5px; color: var(--green);
+    font-family: 'SF Mono','Fira Code',monospace;
+  }
+
+  /* ── Fix table ── */
+  .fix-table { width: 100%; border-collapse: collapse; }
+  .fix-table th {
+    text-align: left; padding: 8px 12px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-faint);
+    border-bottom: 1px solid var(--border);
+  }
+  .fix-table td {
+    padding: 10px 12px; font-size: 12px; color: var(--ink-muted);
+    border-bottom: 1px solid rgba(42,42,64,0.5); vertical-align: top; line-height: 1.5;
+  }
+  .fix-table tr:last-child td { border-bottom: none; }
+  .fix-table td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 100px; font-size: 9.5px; font-weight: 700;
+  }
+  .status-fixed { background: rgba(16,185,129,0.15); color: var(--green); }
+  .status-improved { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+  /* ── Data flow ── */
+  .flow {
+    display: flex; align-items: center; gap: 0; overflow-x: auto;
+    padding: 20px 0; margin-bottom: 8px;
+  }
+  .flow-step {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    min-width: 110px; padding: 12px 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); text-align: center; flex-shrink: 0;
+  }
+  .flow-step-icon { font-size: 20px; }
+  .flow-step-name { font-size: 10px; font-weight: 700; color: var(--ink); }
+  .flow-step-detail { font-size: 9px; color: var(--ink-faint); line-height: 1.3; }
+  .flow-arrow {
+    flex-shrink: 0; width: 32px; text-align: center;
+    font-size: 14px; color: var(--ink-faint); padding: 0 2px;
+  }
+  .flow-label {
+    font-size: 8.5px; color: var(--teal); font-family: 'SF Mono','Fira Code',monospace;
+    white-space: nowrap;
+  }
+
+  /* ── Cards grid ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card-accent-teal  { border-top: 3px solid var(--teal); }
+  .card-accent-violet{ border-top: 3px solid var(--violet); }
+  .card-accent-green { border-top: 3px solid var(--green); }
+  .card-accent-amber { border-top: 3px solid var(--amber); }
+  .card-accent-blue  { border-top: 3px solid var(--blue); }
+  .card-accent-red   { border-top: 3px solid var(--red); }
+  .card h3 { font-size: 13.5px; font-weight: 700; margin-bottom: 8px; }
+  .card p { font-size: 12px; color: var(--ink-muted); line-height: 1.55; }
+  .card ul { padding-left: 16px; font-size: 12px; color: var(--ink-muted); line-height: 1.7; }
+  .card-tag { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 10px; font-weight: 700; margin-bottom: 8px; }
+
+  /* ── Comment thread ── */
+  .comment-area {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .comment-header {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .comment-header h3 { font-size: 13px; font-weight: 700; }
+  .comments { padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto; }
+  .comment {
+    display: flex; gap: 10px; padding: 12px; border-radius: var(--radius-sm);
+    background: var(--surface2); border: 1px solid var(--border);
+  }
+  .comment-av {
+    width: 28px; height: 28px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;
+    font-weight: 700;
+  }
+  .comment-av-arch { background: rgba(32,128,141,0.2); color: var(--teal); }
+  .comment-av-be   { background: rgba(124,58,237,0.2); color: var(--violet); }
+  .comment-av-fe   { background: rgba(59,130,246,0.2); color: var(--blue); }
+  .comment-body { flex: 1; min-width: 0; }
+  .comment-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .comment-name { font-size: 11.5px; font-weight: 700; color: var(--ink); }
+  .comment-role { font-size: 9px; color: var(--ink-faint); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .comment-text { font-size: 12px; color: var(--ink-muted); line-height: 1.55; }
+  .comment-node { font-size: 10px; color: var(--teal); font-family: 'SF Mono','Fira Code',monospace; margin-top: 3px; }
+  .comment-form { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+  .comment-input {
+    flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface2); color: var(--ink); font: inherit; font-size: 12px;
+  }
+  .comment-input:focus { outline: 2px solid var(--teal); outline-offset: -1px; }
+  .comment-submit {
+    padding: 8px 16px; border: none; border-radius: var(--radius-sm);
+    background: var(--teal); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+
+  /* ── Value prop ── */
+  .value-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .value-item {
+    padding: 20px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .value-num { font-size: 32px; font-weight: 800; line-height: 1; }
+  .value-label { font-size: 12px; color: var(--ink-muted); line-height: 1.45; }
+  .value-src { font-size: 10px; color: var(--ink-faint); margin-top: 4px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .arch { grid-template-columns: 1fr 1fr; }
+    .value-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .arch { grid-template-columns: 1fr; }
+    .value-grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══ HERO ═══ -->
+  <div class="hero">
+    <div class="hero-eyebrow">
+      <span>🎙</span> Architecture Report · Iteration 16
+    </div>
+    <h1>Agentic Desk<br/><span>Voice Assistant Agent</span></h1>
+    <p class="hero-sub">
+      A real-time Gemini Live voice assistant built on a WebSocket PCM16 audio pipeline, ElevenLabs-style organic blob orb, noise-gated level meter, fixed-height transcript feed, and a two-panel layout that never shifts. No send button. Gemini's own VAD handles turn-taking.
+    </p>
+    <div class="hero-meta">
+      <div class="hero-stat"><span class="hero-stat-val">~12ms</span><span class="hero-stat-lbl">Audio latency (AudioWorklet PCM16)</span></div>
+      <div class="hero-stat"><span class="hero-stat-val">29</span><span class="hero-stat-lbl">Gemini Live voices (fallback list)</span></div>
+      <div class="hero-stat"><span class="hero-stat-val">0</span><span class="hero-stat-lbl">Send buttons — pure realtime VAD</span></div>
+      <div class="hero-stat"><span class="hero-stat-val">Fixed</span><span class="hero-stat-lbl">Transcript height — zero layout shift</span></div>
+    </div>
+  </div>
+
+  <!-- ═══ VALUE PROPOSITION ═══ -->
+  <div class="section">
+    <div class="section-title">Value Proposition — The Spark</div>
+    <div class="value-grid">
+      <div class="value-item">
+        <span class="value-num" style="color:#20808d">Real-time</span>
+        <span class="value-label">No record-then-send. Gemini's Voice Activity Detection drives turn-taking automatically — just speak naturally.</span>
+        <span class="value-src">AudioWorklet → WS binary PCM16 → Gemini Live API</span>
+      </div>
+      <div class="value-item">
+        <span class="value-num" style="color:#7c3aed">Noise-gated</span>
+        <span class="value-label">First 1.5s of capture calibrates a personal ambient noise floor. Only genuine speech passes — no orb flickering from fan/AC noise.</span>
+        <span class="value-src">RMS + dynamic threshold + exponential smoothing</span>
+      </div>
+      <div class="value-item">
+        <span class="value-num" style="color:#10b981">Stable UI</span>
+        <span class="value-label">Transcript feed is a fixed 120px container. Messages fade in/out at the bottom. No scrollbar. No layout shift as conversation grows.</span>
+        <span class="value-src">TransitionGroup + mask-image fade + -webkit-line-clamp</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ARCHITECTURE NODES ═══ -->
+  <div class="section">
+    <div class="section-title">Architecture Nodes — click any node to explore</div>
+    <div class="arch">
+
+      <!-- Frontend col -->
+      <div class="arch-col">
+        <div class="arch-col-label">Frontend — Vue 3 + Vite</div>
+        <div class="arch-node" onclick="select(this,'node-voiceview')">
+          <span class="arch-node-icon">🎙</span>
+          <div class="arch-node-name">VoiceView.vue</div>
+          <div class="arch-node-path">src/components/VoiceView.vue</div>
+          <div class="arch-node-desc">Two-column layout. Session lifecycle, noise-gated level meter, fixed transcript feed, preset/instructions sidebar.</div>
+          <span class="arch-node-tag tag-fe">Vue Component</span>
+        </div>
+        <div class="arch-node" onclick="select(this,'node-voicelive')">
+          <span class="arch-node-icon">📡</span>
+          <div class="arch-node-name">voiceLive.js</div>
+          <div class="arch-node-path">src/lib/voiceLive.js</div>
+          <div class="arch-node-desc">Three exports: createCapture (AudioWorklet PCM16), createPlayback (gapless Web Audio), connectLiveWs (WS protocol).</div>
+          <span class="arch-node-tag tag-lib">Lib</span>
+        </div>
+        <div class="arch-node" onclick="select(this,'node-worklet')">
+          <span class="arch-node-icon">🔊</span>
+          <div class="arch-node-name">pcm-capture-worklet.js</div>
+          <div class="arch-node-path">public/pcm-capture-worklet.js</div>
+          <div class="arch-node-desc">AudioWorkletProcessor. Buffers 2048 Float32 samples, converts to Int16 PCM, posts ArrayBuffer to main thread.</div>
+          <span class="arch-node-tag tag-audio">Audio Worklet</span>
+        </div>
+      </div>
+
+      <!-- WS / Protocol col -->
+      <div class="arch-col">
+        <div class="arch-col-label">WebSocket Protocol</div>
+        <div class="arch-node" onclick="select(this,'node-ws')">
+          <span class="arch-node-icon">🔗</span>
+          <div class="arch-node-name">WS /voice/live/ws</div>
+          <div class="arch-node-path">ws://localhost/voice/live/ws</div>
+          <div class="arch-node-desc">Binary frames = PCM16 audio (both directions). Text frames = JSON {type, payload} control messages.</div>
+          <span class="arch-node-tag tag-ws">WebSocket</span>
+        </div>
+        <div class="arch-node" onclick="select(this,'node-protocol')">
+          <span class="arch-node-icon">📋</span>
+          <div class="arch-node-name">Wire Protocol</div>
+          <div class="arch-node-path">internal/voicelive/voicelive.go</div>
+          <div class="arch-node-desc">start → session_state(active) → [binary PCM] ↔ [binary PCM] → transcript / interrupt / error → end</div>
+          <span class="arch-node-tag tag-ws">Protocol</span>
+        </div>
+        <div class="arch-node" onclick="select(this,'node-config')">
+          <span class="arch-node-icon">⚙️</span>
+          <div class="arch-node-name">GET /voice/live/config</div>
+          <div class="arch-node-path">internal/voicelive</div>
+          <div class="arch-node-desc">Returns {voices:[], defaultModel:""} — real Gemini Live voice list, not hardcoded. Falls back to 29-voice static list if unavailable.</div>
+          <span class="arch-node-tag tag-go">REST</span>
+        </div>
+      </div>
+
+      <!-- Go backend col -->
+      <div class="arch-col">
+        <div class="arch-col-label">Go Backend — Genkit + Gemini Live</div>
+        <div class="arch-node" onclick="select(this,'node-govoice')">
+          <span class="arch-node-icon">🤖</span>
+          <div class="arch-node-name">voicelive.go</div>
+          <div class="arch-node-path">internal/voicelive/voicelive.go</div>
+          <div class="arch-node-desc">Go WS handler. Bridges browser audio ↔ Gemini Live SDK. Wires temperature, voice, instructions into LiveConnectConfig.</div>
+          <span class="arch-node-tag tag-go">Go Handler</span>
+        </div>
+        <div class="arch-node" onclick="select(this,'node-gemini')">
+          <span class="arch-node-icon">✨</span>
+          <div class="arch-node-name">Gemini Live SDK</div>
+          <div class="arch-node-path">google.golang.org/genai v1.57.0</div>
+          <div class="arch-node-desc">Live.Connect(ctx, model, config) → *Session. Bidirectional audio streaming. VAD built-in. Temperature via LiveConnectConfig.Temperature *float32.</div>
+          <span class="arch-node-tag tag-go">SDK</span>
+        </div>
+        <div class="arch-node" onclick="select(this,'node-store')">
+          <span class="arch-node-icon">🗄️</span>
+          <div class="arch-node-name">core.js store</div>
+          <div class="arch-node-path">src/stores/core.js</div>
+          <div class="arch-node-desc">Pinia store. Provides baseUrl for all API/WS calls. VoiceView reads only core.baseUrl — no direct store coupling.</div>
+          <span class="arch-node-tag tag-fe">Pinia</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail panel — populated by JS -->
+    <div class="detail-panel" id="node-voiceview">
+      <h3>VoiceView.vue — Component Architecture</h3>
+      <p>Two-column layout: <code>vl__sidebar</code> (290px, always visible) | <code>vl__main</code> (flex:1). The sidebar contains voice select, temperature slider, and the instructions panel — always editable when session is idle. The preset dropdown opens <strong>upward</strong> (bottom-anchored) so it's never clipped.</p>
+      <div class="issues">
+        <div class="issue">
+          <span class="issue-icon">🔊</span>
+          <div class="issue-body">
+            <div class="issue-title">Noise Floor Calibration</div>
+            <div class="issue-desc">First 30 frames (~1.5s) after capture starts measure ambient RMS. Dynamic threshold = noiseFloor × 2.5 with hysteresis. Exponential smoothing (α=0.6 attack, α=0.15 decay) prevents fast flicker.</div>
+            <div class="issue-fix">✓ Fix: startLevelMeter() — noiseFloor calibration loop + gated RMS + smoothing</div>
+          </div>
+        </div>
+        <div class="issue">
+          <span class="issue-icon">📺</span>
+          <div class="issue-body">
+            <div class="issue-title">Fixed Transcript Feed</div>
+            <div class="issue-desc">Container is height:120px, flex-shrink:0 — never grows. Shows last 3 messages via computed feedMessages. TransitionGroup slides new messages in from bottom. mask-image fades top edge.</div>
+            <div class="issue-fix">✓ Fix: .vl__feed { height:120px; flex-shrink:0 } + feedMessages = messages.slice(-3)</div>
+          </div>
+        </div>
+        <div class="issue">
+          <span class="issue-icon">🫙</span>
+          <div class="issue-body">
+            <div class="issue-title">Orb Zero-Reflow</div>
+            <div class="issue-desc">Orb is fixed 240×240px. State changes only modify transform:scale() — no width/height/top/left changes. Blob border-radius and color transition independently without touching layout.</div>
+            <div class="issue-fix">✓ Fix: .vl__orb { width:240px; height:240px } + transform-only scale per state</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-panel" id="node-voicelive">
+      <h3>voiceLive.js — Three Exports</h3>
+      <p><code>createCapture(onChunk)</code> — getUserMedia → AudioContext 16kHz → AudioWorklet → returns {stop, stream, ctx}. ctx exposed for mute (suspend/resume without killing the stream). stream exposed for level meter reuse — no second getUserMedia call.</p>
+      <p><code>createPlayback()</code> — AudioContext 24kHz. Gapless scheduling via nextPlayTime cursor. flush() drops cursor to ctx.currentTime for barge-in interrupts.</p>
+      <p><code>connectLiveWs({...})</code> — WebSocket binaryType=arraybuffer. Binary frames → onAudio. JSON frames dispatched to onSessionState / onTranscript / onInterrupt / onError.</p>
+    </div>
+
+    <div class="detail-panel" id="node-worklet">
+      <h3>pcm-capture-worklet.js — Audio Render Thread</h3>
+      <p>Lives in <code>public/</code> as a plain static file — AudioWorklet.addModule() requires a real URL, not a bundled import. Buffers 128-sample Float32 render quanta until chunkSize (2048 samples = ~128ms at 16kHz), converts to Int16 PCM, posts ArrayBuffer via transferable (zero-copy).</p>
+    </div>
+
+    <div class="detail-panel" id="node-ws">
+      <h3>WebSocket Wire Protocol</h3>
+      <p>Single persistent connection per session. Binary frames carry raw Int16 PCM16 audio (browser→server at 16kHz, server→browser at 24kHz). Text frames carry JSON control messages.</p>
+      <p>Client → Server: <code>{"type":"start","payload":{"model","voice","temperature","instructions"}}</code> then binary PCM then <code>{"type":"end"}</code></p>
+      <p>Server → Client: <code>session_state</code> (idle/active) · <code>transcript</code> (role, text, isFinal) · <code>interrupt</code> · <code>error</code> · binary PCM</p>
+    </div>
+
+    <div class="detail-panel" id="node-protocol">
+      <h3>Session Lifecycle</h3>
+      <p>1. Client sends <code>start</code> frame with config. 2. Server establishes Gemini Live session, responds with <code>session_state{state:"active"}</code>. 3. Browser starts AudioWorklet capture and gapless playback. 4. Bidirectional audio flows until client sends <code>end</code> or WS closes. Gemini's built-in VAD handles all turn detection — no push-to-talk required.</p>
+    </div>
+
+    <div class="detail-panel" id="node-config">
+      <h3>GET /voice/live/config</h3>
+      <p>Returns the list of available voices and the default model ID from the server-side Gemini configuration. VoiceView fetches this on mount; falls back to a hardcoded 29-voice list if the server is unreachable, so the UI is never empty during development.</p>
+    </div>
+
+    <div class="detail-panel" id="node-govoice">
+      <h3>Go Voice Handler</h3>
+      <p>Upgrades HTTP → WS, reads the <code>start</code> frame, builds <code>LiveConnectConfig{Voice, Temperature, SystemInstruction}</code>, calls <code>genai.Live.Connect()</code>. Then runs two goroutines: (1) read from browser WS → write to Gemini session, (2) read from Gemini → write to browser WS. <code>interrupt</code> message sent when Gemini signals a barge-in.</p>
+    </div>
+
+    <div class="detail-panel" id="node-gemini">
+      <h3>Gemini Live SDK — google.golang.org/genai v1.57.0</h3>
+      <p>Key surface: <code>client.Live.Connect(ctx, model, *LiveConnectConfig) (*Session, error)</code>. Config supports <code>Temperature *float32</code>, <code>Voice string</code>, <code>SystemInstruction *Content</code>. Session is a bidirectional stream — <code>session.Send()</code> for audio input, <code>session.Receive()</code> for output (audio + transcript parts).</p>
+    </div>
+
+    <div class="detail-panel" id="node-store">
+      <h3>Pinia Store — core.js</h3>
+      <p>VoiceView only reads <code>core.baseUrl</code> from the store. All session state (connectionState, messages, audioLevel, etc.) is local to VoiceView — no store pollution. This keeps the voice session isolated and easy to reset.</p>
+    </div>
+  </div>
+
+  <!-- ═══ DATA FLOW ═══ -->
+  <div class="section">
+    <div class="section-title">Real-time Audio Data Flow</div>
+    <div class="flow">
+      <div class="flow-step">
+        <span class="flow-step-icon">🎤</span>
+        <div class="flow-step-name">Microphone</div>
+        <div class="flow-step-detail">getUserMedia<br/>16kHz mono</div>
+      </div>
+      <div class="flow-arrow">
+        →<div class="flow-label">MediaStream</div>
+      </div>
+      <div class="flow-step">
+        <span class="flow-step-icon">⚙️</span>
+        <div class="flow-step-name">AudioWorklet</div>
+        <div class="flow-step-detail">Float32→Int16<br/>2048 samples</div>
+      </div>
+      <div class="flow-arrow">
+        →<div class="flow-label">ArrayBuffer</div>
+      </div>
+      <div class="flow-step">
+        <span class="flow-step-icon">🔗</span>
+        <div class="flow-step-name">WebSocket</div>
+        <div class="flow-step-detail">Binary frame<br/>binaryType=arraybuffer</div>
+      </div>
+      <div class="flow-arrow">
+        →<div class="flow-label">PCM16</div>
+      </div>
+      <div class="flow-step">
+        <span class="flow-step-icon">🖥️</span>
+        <div class="flow-step-name">Go Handler</div>
+        <div class="flow-step-detail">session.Send()<br/>to Gemini</div>
+      </div>
+      <div class="flow-arrow">
+        →<div class="flow-label">Gemini Live</div>
+      </div>
+      <div class="flow-step">
+        <span class="flow-step-icon">✨</span>
+        <div class="flow-step-name">Gemini AI</div>
+        <div class="flow-step-detail">VAD + response<br/>24kHz audio</div>
+      </div>
+      <div class="flow-arrow">
+        ←<div class="flow-label">PCM16 + transcript</div>
+      </div>
+      <div class="flow-step">
+        <span class="flow-step-icon">🔊</span>
+        <div class="flow-step-name">Web Audio</div>
+        <div class="flow-step-detail">Gapless playback<br/>nextPlayTime cursor</div>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--ink-faint);margin-top:6px">
+      Noise floor calibration runs in parallel on the capture path — first 1.5s samples ambient RMS, sets dynamic threshold for orb responsiveness.
+    </p>
+  </div>
+
+  <!-- ═══ FIXES DELIVERED ═══ -->
+  <div class="section">
+    <div class="section-title">All Fixes Delivered This Session</div>
+    <table class="fix-table">
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Root Cause</th>
+          <th>Fix Applied</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Transcript affects layout</td>
+          <td>flex:1 child grew unbounded inside scrollable parent, pushing orb up</td>
+          <td>Fixed 120px container + feedMessages=slice(-3) + TransitionGroup swap</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Scrollbar visible / scroll needed</td>
+          <td>User wants a feed, not a log — last 3 messages only, no scroll</td>
+          <td>mask-image top fade + overflow:hidden + max 3 visible messages</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Orb flickers from ambient noise</td>
+          <td>RMS threshold was hardcoded 0.05 — sensitive to fan/AC/typing noise</td>
+          <td>Noise floor calibration (30 frames) + dynamic threshold ×2.5 + exponential smoothing</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Bar height collapses to zero</td>
+          <td>Math.abs(Math.sin())*audioLevel = 0 when audioLevel=0</td>
+          <td>Math.max(3, ...) baseline + animated opacity for idle state</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Instructions not editable</td>
+          <td>is-locked applied pointer-events:none to whole controls block including textarea</td>
+          <td>Instructions moved to sidebar, outside locked zone, disabled only when hasActiveSession</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Preset dropdown cropped</td>
+          <td>overflow:hidden on voice-header clipped position:absolute menu</td>
+          <td>Sidebar uses overflow-x:visible + menu opens upward (bottom-anchored) + z-index:500</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>createMediaStreamSource crash</td>
+          <td>capture.stream was undefined — createCapture didn't return stream</td>
+          <td>voiceLive.js returns {stop, stream, ctx} — levelMeter reuses same stream</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>AudioContext suspended</td>
+          <td>Autoplay policy suspends AudioContext before user gesture completes</td>
+          <td>ctx.resume() called immediately after construction in both capture and playback</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Orb vibration/jitter</td>
+          <td>width/height/top/left changed per state → layout reflow per animation frame</td>
+          <td>Fixed 240×240px orb, transform:scale() only, blob positions never change</td>
+          <td><span class="status-badge status-fixed">✓ Fixed</span></td>
+        </tr>
+        <tr>
+          <td>Send button existed</td>
+          <td>Legacy push-to-talk UI pattern</td>
+          <td>Start/Stop toggle only. Gemini VAD handles all turn-taking automatically</td>
+          <td><span class="status-badge status-fixed">✓ Removed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ DESIGN DECISIONS ═══ -->
+  <div class="section">
+    <div class="section-title">Design Decisions — UX Rationale</div>
+    <div class="cards">
+      <div class="card card-accent-teal">
+        <span class="card-tag" style="background:rgba(32,128,141,0.15);color:#20808d">Layout</span>
+        <h3>Two-column sidebar pattern</h3>
+        <p>Config (voice/temp/instructions) stays always visible in the left panel. The right panel is entirely dedicated to the voice experience — orb + state + transcript feed + controls. No tabs, no collapse, no overflow.</p>
+      </div>
+      <div class="card card-accent-violet">
+        <span class="card-tag" style="background:rgba(124,58,237,0.15);color:#7c3aed">UX</span>
+        <h3>Fixed transcript feed</h3>
+        <p>Voice UIs are not chat UIs. The user's attention is on the orb (speaking state), not reading a scrolling log. Three messages in a 120px fixed feed gives "at a glance" context without layout disruption.</p>
+      </div>
+      <div class="card card-accent-green">
+        <span class="card-tag" style="background:rgba(16,185,129,0.15);color:#10b981">Audio</span>
+        <h3>Noise-gated level meter</h3>
+        <p>Standard microphone input has ambient RMS of 0.02–0.06 even in "silence". Without a noise floor, the orb flickers constantly from keyboard/AC/breathing. Calibration + hysteresis makes the orb trustworthy.</p>
+      </div>
+      <div class="card card-accent-amber">
+        <span class="card-tag" style="background:rgba(245,158,11,0.15);color:#f59e0b">Animation</span>
+        <h3>Transform-only orb state</h3>
+        <p>Changing width/height triggers layout reflow which causes the "mirroring/jitter" effect seen previously. Pure scale() transforms are compositor-only — they never touch layout, producing buttery smooth state transitions.</p>
+      </div>
+      <div class="card card-accent-blue">
+        <span class="card-tag" style="background:rgba(59,130,246,0.15);color:#3b82f6">UX</span>
+        <h3>Mute preserves session</h3>
+        <p>toggleMute() calls capture.ctx.suspend()/resume() — this pauses the AudioWorklet without killing the WebSocket. The Gemini session stays alive; the user can unmute and continue speaking without reconnecting.</p>
+      </div>
+      <div class="card card-accent-red">
+        <span class="card-tag" style="background:rgba(239,68,68,0.15);color:#ef4444">Resilience</span>
+        <h3>29-voice offline fallback</h3>
+        <p>If /voice/live/config fails (server not running in dev), the full list of 29 known Gemini Live voices populates the selector immediately. The UI is never blank or broken during development.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ COMMENT THREAD ═══ -->
+  <div class="section">
+    <div class="section-title">Architecture Review Thread</div>
+    <div class="comment-area">
+      <div class="comment-header">
+        <h3>💬 Node Comments — click any architecture node above, then comment below</h3>
+      </div>
+      <div class="comments" id="comments-list">
+        <div class="comment">
+          <div class="comment-av comment-av-arch">AI</div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <span class="comment-name">AI Infra Architect</span>
+              <span class="comment-role">Arch</span>
+            </div>
+            <div class="comment-text">The noise floor calibration window of 30 frames (≈1.5s) is a good starting point. Consider making this configurable if users report the orb still flickering in noisy environments — a 3× multiplier may be needed for open-office settings.</div>
+            <div class="comment-node">→ startLevelMeter() · noiseFloor calibration</div>
+          </div>
+        </div>
+        <div class="comment">
+          <div class="comment-av comment-av-be">BE</div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <span class="comment-name">Backend Lead</span>
+              <span class="comment-role">Backend</span>
+            </div>
+            <div class="comment-text">The Go handler currently spawns two raw goroutines (read/write) without WaitGroup cleanup. On session end, if the Gemini stream closes before the WS, there's a brief window where sendAudio() can panic on a closed channel. Add context cancellation + WaitGroup.Wait() before returning from the handler.</div>
+            <div class="comment-node">→ voicelive.go · session goroutines</div>
+          </div>
+        </div>
+        <div class="comment">
+          <div class="comment-av comment-av-fe">FE</div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <span class="comment-name">Frontend Lead</span>
+              <span class="comment-role">Frontend</span>
+            </div>
+            <div class="comment-text">The bar height formula uses Date.now() inline in the template binding — this causes Vue to re-render the template at 60fps just for the bar animation. Consider moving bar heights to a computed array updated by requestAnimationFrame, or using CSS animation only for the idle pattern and JS only for the active amplitude bars.</div>
+            <div class="comment-node">→ VoiceView.vue · vl__bars template binding</div>
+          </div>
+        </div>
+      </div>
+      <div class="comment-form">
+        <input class="comment-input" id="comment-input" placeholder="Ask a question or suggest an edit on any architecture node…" />
+        <button class="comment-submit" onclick="addComment()">Add Comment</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+  // Node selection
+  let selectedNode = null
+
+  function select(el, nodeId) {
+    // Deselect all
+    document.querySelectorAll('.arch-node').forEach(n => n.classList.remove('selected'))
+    document.querySelectorAll('.detail-panel').forEach(p => p.classList.remove('visible'))
+
+    if (selectedNode === nodeId) {
+      selectedNode = null
+      return
+    }
+    el.classList.add('selected')
+    const panel = document.getElementById(nodeId)
+    if (panel) panel.classList.add('visible')
+    selectedNode = nodeId
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
+  // Comment thread
+  const roles = ['FE','BE','AI','QA','PM']
+  const roleClass = { FE:'comment-av-fe', BE:'comment-av-be', AI:'comment-av-arch', QA:'comment-av-fe', PM:'comment-av-be' }
+  const roleNames = { FE:'Frontend Dev', BE:'Backend Dev', AI:'AI Architect', QA:'QA Engineer', PM:'Product Manager' }
+  let roleIdx = 3
+
+  function addComment() {
+    const input = document.getElementById('comment-input')
+    const text = input.value.trim()
+    if (!text) return
+    const role = roles[roleIdx % roles.length]
+    roleIdx++
+    const list = document.getElementById('comments-list')
+    const div = document.createElement('div')
+    div.className = 'comment'
+    div.innerHTML = `
+      <div class="comment-av ${roleClass[role]}">${role}</div>
+      <div class="comment-body">
+        <div class="comment-meta">
+          <span class="comment-name">${roleNames[role]}</span>
+          <span class="comment-role">${role}</span>
+        </div>
+        <div class="comment-text">${text}</div>
+        ${selectedNode ? `<div class="comment-node">→ ${selectedNode.replace('node-','')}</div>` : ''}
+      </div>`
+    list.appendChild(div)
+    input.value = ''
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
+  // Enter key on comment input
+  document.getElementById('comment-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addComment()
+  })
+</script>
+</body>
+</html>

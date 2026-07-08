@@ -2,7 +2,32 @@
 
 Living handoff note — read this first in any new session on this repo. Overwrite the status below at the end of every work session; this file always describes *now*, not history (history is `CHANGELOG.md` and, once code review starts, `docs/reviews/`). Read [`PLAN.md`](PLAN.md) and the design doc for full detail — this file is the fast-resume summary, not a replacement for either.
 
-## Status (2026-07-08, code-block contrast bug + dark-mode thinking icon + Profile/ProjectContext polish + prompt categories, iteration 15)
+## Status (2026-07-08, Voice Assistant full realtime rebuild + catalog pattern-blur polish, iteration 16)
+
+**VoiceView.vue — complete rebuild.** Audited root cause of `createMediaStreamSource` error: `startLevelMeter(capture.stream)` was called with `undefined` because `createCapture` never returned `.stream`. Fixed in `voiceLive.js` — now returns `{ stop, stream, ctx }`. `startLevelMeter` reuses the same `MediaStream` object (no second `getUserMedia`). `ctx` exposed so `toggleMute` can `suspend()`/`resume()` the AudioWorklet context in-place without killing the WebSocket.
+
+**No send button — correctly absent.** Single Start/Stop flow only. Gemini VAD handles turn-taking.
+
+**New features in VoiceView:**
+- Voice grid: all voices from `/voice/live/config` as click-to-select cards with per-voice hue derived from name hash. Offline fallback lists the full 29 known Gemini Live voices so UI is never empty.
+- Temperature slider: 0–2 range, labeled Precise→Creative, locked while session active, persisted to localStorage.
+- Instructions panel: monospace textarea, always visible (not collapsible), `min-height:80px`, locked while active, persisted.
+- Mute button (active state): suspends AudioWorklet ctx, stops PCM flowing to WS, keeps session alive. Muted-mic SVG icon + mute overlay on orb.
+- End button: phone-off icon, separate from mute, always ends the session.
+- `isStarting` spinner state on the start button.
+- Pulse ring on orb when speaking; mute overlay when muted.
+- Mic activity bars (12 bars, amplitude-driven) visible when listening.
+- Status badge: Idle/Connecting/Live/Muted/Error with animated dot.
+- Pattern-blur background (icon-desktop SVG motif + frost + grain).
+- Topbar brand mark top-right.
+
+**Catalog views (all three) — complete:**
+- SkillCatalogView, PromptCatalogView: pattern-bg (SVG + frost + grain), view-head with left div (h1 + sub, `flex:1 min-width:0`) + right div (filter search + brand-mark icon-desktop). Category tabs with `--accent-ai` / `--accent-ai-soft`. Card hover uses `--accent-ai-soft`. Glass-morphism card backgrounds.
+- TasksView: pattern-bg, board-header with left div (h1 + sub) + right div (search + brand-mark). Board columns and task cards with glass-morphism backgrounds.
+
+**Build:** `make desktop-frontend` clean. `go build ./...` clean. Only pre-existing mermaid/cytoscape chunk-size warnings (not errors).
+
+**Next session:** visual QA pass in the running Wails app — check dark-mode orb colors, voice-grid scroll height at many voices, mute flow end-to-end, instructions lock behavior.
 
 **Trigger:** asked to grep the codebase, work through iteration 14's pending list, and run `/impeccable`/`/frontend-design` over the UI — then mid-session the user posted a screenshot showing chat code blocks with syntax text nearly invisible, GO/BASH blocks looking "not aligned", and the dark-mode thinking icon unclear/blank, so that became the priority thread.
 
