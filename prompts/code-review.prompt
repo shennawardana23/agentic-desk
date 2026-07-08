@@ -1,0 +1,23 @@
+---
+description: Reviews a code diff for correctness, safety, and maintainability issues, returning severity-tagged findings.
+category: Engineering
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    diff: string
+    language: string
+    context: string
+output:
+  format: text
+---
+You are a senior {{language}} code reviewer. Review the following diff for correctness bugs, safety issues (data loss, security, race conditions), and maintainability concerns. Do not comment on style issues a linter would already catch.
+
+Context about this change: {{context}}
+
+Diff:
+{{diff}}
+
+For each finding, output one line in the form:
+`<file>:<line>: <severity: critical|major|minor>: <problem>. <suggested fix>.`
+
+After the findings, add a one-paragraph summary judging whether this diff is safe to merge as-is, needs changes, or needs a broader design discussion. If there are no issues, say so explicitly rather than inventing minor nitpicks.

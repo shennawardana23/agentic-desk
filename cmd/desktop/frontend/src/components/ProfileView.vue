@@ -1,0 +1,184 @@
+<script setup>
+import { computed, onMounted } from 'vue'
+import { useCoreStore } from '../stores/core'
+
+const core = useCoreStore()
+onMounted(() => core.loadProfile())
+
+// Group by source file (e.g. CLAUDE.md, RULES.md) so rules read as an
+// outline of each imported file rather than a flat undifferentiated list.
+const groupedRules = computed(() => {
+  const groups = new Map()
+  for (const rule of core.profileRules) {
+    if (!groups.has(rule.sourceFile)) groups.set(rule.sourceFile, [])
+    groups.get(rule.sourceFile).push(rule)
+  }
+  return [...groups.entries()].map(([sourceFile, rules]) => ({ sourceFile, rules }))
+})
+</script>
+
+<template>
+  <section class="panel">
+    <header class="panel-header">
+      <h2>Profile Rules</h2>
+      <p class="panel-subtitle">Coding-principles rules imported from your CLAUDE.md-style files.</p>
+    </header>
+
+    <p v-if="core.profileError" class="error" role="alert">{{ core.profileError }}</p>
+
+    <div v-else-if="core.loadingProfile" class="skeleton-list" aria-hidden="true">
+      <div class="skeleton-row" v-for="n in 4" :key="n" />
+    </div>
+
+    <p v-else-if="core.profileRules.length === 0" class="empty-state">
+      No profile rules imported yet. Run the importer against your CLAUDE.md/RULES.md files to seed this list.
+    </p>
+
+    <div v-else class="source-groups">
+      <div v-for="group in groupedRules" :key="group.sourceFile" class="source-group">
+        <h3 class="source-heading">{{ group.sourceFile }}</h3>
+        <ul class="rule-list">
+          <li v-for="rule in group.rules" :key="`${rule.sourceFile}/${rule.heading}`" class="rule-row">
+            <div class="rule-meta">
+              <span class="rule-heading">{{ rule.heading }}</span>
+              <span v-if="rule.overridden" class="badge">Overridden</span>
+            </div>
+            <p class="rule-content">{{ rule.content }}</p>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+}
+
+.panel-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.panel-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--ink-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.source-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.source-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.source-heading {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rule-row {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.rule-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rule-heading {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.rule-content {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-row {
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+</style>

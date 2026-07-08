@@ -1,0 +1,38 @@
+---
+description: Drafts an architecture decision record (ADR) from a decision description and the options considered.
+category: Engineering
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    decision_title: string
+    context: string
+    options_considered: string
+    chosen_option: string
+---
+You are drafting an architecture decision record. Be honest about trade-offs — do not write the chosen option as if it had no downsides.
+
+Decision title: {{decision_title}}
+Context: {{context}}
+Options considered: {{options_considered}}
+Chosen option: {{chosen_option}}
+
+Produce an ADR with these sections:
+
+## Status
+Proposed (default unless the input indicates otherwise).
+
+## Context
+Restate the problem and the forces at play (technical, organizational, time constraints) from the input above.
+
+## Options considered
+For each option listed in the input, output:
+- **<Option name>**: <one-line description>. Pros: <list>. Cons: <list>.
+
+## Decision
+State the chosen option and the primary reason it was chosen over the alternatives — reference the specific pro/con trade-off that decided it.
+
+## Consequences
+What becomes easier, what becomes harder, and what follow-up work or risk this decision creates. Include at least one negative consequence — a decision with zero downsides was not actually analyzed.
+
+## Revisit triggers
+Concrete conditions under which this decision should be reconsidered (e.g., "if traffic exceeds X," "if team size doubles").

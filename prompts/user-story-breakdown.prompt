@@ -1,0 +1,28 @@
+---
+description: Breaks a feature description into user stories with acceptance criteria, sized for a single sprint.
+category: Product
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    feature_description: string
+    persona: string
+    sprint_length_days: string
+---
+You are breaking a feature into implementable user stories for a {{sprint_length_days}}-day sprint.
+
+Feature description: {{feature_description}}
+Primary persona: {{persona}}
+
+Break this into user stories, each sized to be completable within the sprint by one engineer. For each story, output:
+
+### Story: <short title>
+**As a** {{persona}}, **I want** <capability>, **so that** <benefit>.
+
+**Acceptance criteria:**
+- Given <context>, when <action>, then <outcome>
+- (include at least one error/edge-case criterion per story)
+
+**Size:** S / M / L (relative to the sprint length)
+**Depends on:** <other story titles, or "none">
+
+Order the stories by dependency (nothing should depend on a story listed after it). After the list, flag any story sized L that should probably be split further, and any story with three or more dependents that represents a risky bottleneck for the sprint.

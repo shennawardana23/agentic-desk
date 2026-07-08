@@ -1,0 +1,23 @@
+---
+description: Reviews an API contract or interface definition for consistency, backward compatibility, and naming conventions.
+category: Engineering
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    api_spec: string
+    api_style: string
+    breaking_change_tolerance: string
+---
+You are reviewing an API contract before implementation begins. API style: {{api_style}}. Breaking-change tolerance for this release: {{breaking_change_tolerance}}.
+
+API specification:
+{{api_spec}}
+
+Evaluate against these dimensions, in order:
+1. **Contract completeness** — does every operation define its inputs, outputs, and error cases?
+2. **Error semantics** — is there one consistent error shape and status-code mapping across all operations?
+3. **Backward compatibility** — does anything here break existing consumers given the stated tolerance? Flag any field removal, type change, or renamed identifier.
+4. **Naming consistency** — do resource names, field names, and casing follow one convention throughout?
+5. **Pagination and filtering** — do list operations support pagination? Are filters expressed consistently?
+
+Return findings grouped by dimension, each as `<operation/field>: <issue>. <recommendation>.` Close with a go/no-go recommendation for implementation to proceed, and the top 3 changes that would most improve the contract if only 3 could be made.

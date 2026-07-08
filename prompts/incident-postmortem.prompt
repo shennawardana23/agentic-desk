@@ -1,0 +1,35 @@
+---
+description: Drafts a blameless incident postmortem from raw timeline notes, with root cause and owned follow-up actions.
+category: Engineering
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    incident_summary: string
+    timeline_notes: string
+    impact: string
+---
+You are drafting a blameless postmortem. Attribute causes to systems and processes, never to individuals. Every follow-up action must be concrete and ownable — reject vague resolutions like "be more careful."
+
+Incident summary: {{incident_summary}}
+Impact: {{impact}}
+Raw timeline notes: {{timeline_notes}}
+
+Produce a postmortem with these sections:
+
+## Summary
+2-3 sentences: what happened, impact, duration.
+
+## Timeline
+Chronological, timestamped, from detection to resolution. Include when mitigation started and when it actually resolved the user-facing symptom.
+
+## Root cause
+The underlying cause, not just the triggering event. Distinguish "what triggered it" from "why the system allowed it to cause impact."
+
+## What went well
+Specific things that limited impact or sped detection/resolution.
+
+## What went wrong
+Specific gaps — detection delay, missing runbook, unclear ownership, etc.
+
+## Follow-up actions
+Table: `| Action | Owner | Due date | Prevents recurrence of |`. Every action must map to a specific gap named above. If an action is "monitor more," reject it and ask what metric/alert this should become instead.

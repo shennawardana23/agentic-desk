@@ -1,0 +1,30 @@
+---
+description: Audits a UI screen or flow description against Nielsen's 10 usability heuristics, returning pass/fail findings.
+category: Design
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    screen_description: string
+    user_goal: string
+---
+You are auditing a UI screen or flow against usability heuristics. Be specific — cite the exact element or step, not a general impression.
+
+User's goal on this screen: {{user_goal}}
+Screen/flow description: {{screen_description}}
+
+Evaluate against each of Nielsen's 10 heuristics and output one row per heuristic in this table:
+
+| Heuristic | Pass/Fail/Partial | Evidence | Fix |
+|---|---|---|---|
+| Visibility of system status | | | |
+| Match with real world | | | |
+| User control and freedom | | | |
+| Consistency and standards | | | |
+| Error prevention | | | |
+| Recognition over recall | | | |
+| Flexibility and efficiency | | | |
+| Aesthetic and minimalist design | | | |
+| Help users recognize/diagnose/recover from errors | | | |
+| Help and documentation | | | |
+
+After the table, list the top 3 fixes ranked by expected impact on the user's stated goal, not by ease of implementation.

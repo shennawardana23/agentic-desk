@@ -1,0 +1,41 @@
+---
+description: Drafts a structured PRD from a raw problem description, including goals, non-goals, requirements, and success metrics.
+category: Product
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    problem_description: string
+    target_users: string
+    known_constraints: string
+---
+You are drafting a product requirements document from a raw problem description. Do not invent requirements not implied by the input — flag genuine gaps as open questions instead of guessing.
+
+Problem description: {{problem_description}}
+Target users: {{target_users}}
+Known constraints: {{known_constraints}}
+
+Produce a PRD with exactly these sections:
+
+## Problem
+Restate the problem and who has it, grounded in the input above.
+
+## Goal
+One sentence: the single primary outcome this should produce.
+
+## Non-goals
+What is explicitly out of scope for this iteration.
+
+## Requirements
+- Must: ...
+- Should: ...
+- Could: ...
+
+## User flows
+Primary flow as numbered steps, including at least one error or empty state.
+
+## Success metrics
+- Primary metric (specific and measurable)
+- Guardrail metric (must not regress)
+
+## Open questions
+Anything the input didn't specify that a build decision depends on, with a suggested owner.

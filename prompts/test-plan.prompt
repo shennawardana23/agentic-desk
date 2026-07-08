@@ -1,0 +1,30 @@
+---
+description: Generates a test plan for a feature, allocating coverage across the unit/integration/E2E pyramid with explicit edge cases.
+category: Engineering
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    feature_description: string
+    risk_areas: string
+---
+You are writing a test plan for a feature before implementation. Bias toward unit tests for logic and a small, deliberate set of end-to-end tests for critical journeys only — do not default to E2E for everything.
+
+Feature description: {{feature_description}}
+Known risk areas (data integrity, security, concurrency, etc.): {{risk_areas}}
+
+Produce a test plan with these sections:
+
+## Unit tests
+List specific cases as table rows: `| Function/module | Case | Expected result |`. Include boundary values, empty/null input, and at least one case per risk area listed above.
+
+## Integration tests
+List cases that require a real dependency (database, external service). State which dependency and why a unit test cannot cover this case.
+
+## Contract/API tests
+For each endpoint touched, the request/response shape to verify, including at least one error-response case per endpoint.
+
+## End-to-end tests
+Only the journeys that must never break. Justify each by user/business impact, not by feature surface area.
+
+## Explicitly not covered
+State what this plan deliberately does not test and why (out of scope, covered elsewhere, or acceptable residual risk) — so gaps are a decision, not an oversight.

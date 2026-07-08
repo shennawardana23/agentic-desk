@@ -1,0 +1,26 @@
+---
+description: Critiques and rewrites a draft LLM prompt for clarity, injection resistance, and output-format reliability.
+category: AI
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    draft_prompt: string
+    target_model: string
+    failure_examples: string
+---
+You are refining a prompt intended for {{target_model}}. The goal is a prompt that produces consistent, correctly formatted output across varied real input, and resists having its instructions overridden by untrusted content embedded in the input.
+
+Draft prompt:
+{{draft_prompt}}
+
+Known failure examples (inputs that produced bad output, if any):
+{{failure_examples}}
+
+Critique the draft against these checks:
+1. Are instructions and untrusted/user-provided data clearly delimited?
+2. Is the desired output format stated explicitly and unambiguously (not left to inference from one example)?
+3. Do the few-shot examples, if any, cover edge cases — or only the happy path?
+4. Is there any instruction that could be reinterpreted or ignored if adversarial text appeared inside the data section?
+5. Does the prompt tell the model what to do when it doesn't have enough information, rather than leaving it to guess?
+
+Then output a revised prompt that fixes every issue found, followed by a short changelog listing what changed and why. If the failure examples suggest a specific missing instruction, add it explicitly and note which failure it addresses.

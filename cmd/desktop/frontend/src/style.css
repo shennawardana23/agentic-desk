@@ -1,0 +1,106 @@
+:root {
+    /* Purple-tinted neutrals derived from the icon mark (#4A005F), hue 316. */
+    --bg: oklch(1 0 0);
+    --surface: oklch(0.985 0.003 316);
+    --surface-hover: oklch(0.96 0.006 316);
+    --border: oklch(0.9 0.006 316);
+    --ink: oklch(0.22 0.01 316);
+    --ink-muted: oklch(0.40 0.01 316);
+    --ink-faint: oklch(0.6 0.01 316);
+    --accent: oklch(0.30 0.15 316);
+    --accent-hover: oklch(0.36 0.16 316);
+    --accent-ink: oklch(0.98 0.005 316);
+    --accent-soft: oklch(0.94 0.03 316);
+    --danger: oklch(0.5 0.2 25);
+    --danger-soft: oklch(0.96 0.04 25);
+
+    /* Teal accent from icon-chat.svg/icon-sparkle.svg — reserved for AI/agent-flavored
+       nav items so they read as a distinct feature tier, not just a second brand color. */
+    --accent-ai: #20808d;
+    --accent-ai-soft: oklch(0.95 0.025 200);
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    --bg: oklch(0.17 0.012 316);
+    --surface: oklch(0.21 0.014 316);
+    --surface-hover: oklch(0.26 0.016 316);
+    --border: oklch(0.32 0.016 316);
+    --ink: oklch(0.95 0.004 316);
+    --ink-muted: oklch(0.74 0.01 316);
+    --ink-faint: oklch(0.54 0.012 316);
+    --accent: oklch(0.80 0.09 316);
+    --accent-hover: oklch(0.85 0.10 316);
+    --accent-ink: oklch(0.18 0.01 316);
+    --accent-soft: oklch(0.32 0.05 316);
+    --danger: oklch(0.68 0.18 25);
+    --danger-soft: oklch(0.30 0.09 25);
+
+    --accent-ai: #5ab3bc;
+    --accent-ai-soft: oklch(0.30 0.04 200);
+
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: oklch(0.17 0.012 316);
+        --surface: oklch(0.21 0.014 316);
+        --surface-hover: oklch(0.26 0.016 316);
+        --border: oklch(0.32 0.016 316);
+        --ink: oklch(0.95 0.004 316);
+        --ink-muted: oklch(0.74 0.01 316);
+        --ink-faint: oklch(0.54 0.012 316);
+        --accent: oklch(0.80 0.09 316);
+        --accent-hover: oklch(0.85 0.10 316);
+        --accent-ink: oklch(0.18 0.01 316);
+        --accent-soft: oklch(0.32 0.05 316);
+        --danger: oklch(0.68 0.18 25);
+        --danger-soft: oklch(0.30 0.09 25);
+
+        --accent-ai: #5ab3bc;
+        --accent-ai-soft: oklch(0.30 0.04 200);
+
+        color-scheme: dark;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 150ms var(--ease-out-expo), color 150ms var(--ease-out-expo);
+}
+
+#app {
+    height: 100vh;
+    text-align: left;
+}
+
+button {
+    font: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}

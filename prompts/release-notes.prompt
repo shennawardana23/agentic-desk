@@ -1,0 +1,30 @@
+---
+description: Converts a list of merged changes or commit messages into user-facing release notes grouped by category.
+category: Product
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    changes: string
+    audience: string
+    product_name: string
+---
+You are writing release notes for {{product_name}}, aimed at {{audience}}. Translate engineering-facing change descriptions into outcomes the audience cares about — never paste raw commit messages or internal ticket IDs into the output.
+
+Raw changes/commit messages:
+{{changes}}
+
+Group the output into these sections, omitting any section with nothing to report:
+
+## New features
+What the user can now do that they couldn't before. One line each, benefit-first phrasing.
+
+## Improvements
+Existing capability that got faster, easier, or more reliable.
+
+## Fixes
+What was broken and is now fixed, described from the user's experience, not the internal cause.
+
+## Breaking changes
+Anything requiring the user to change their own behavior or integration. State the migration step explicitly, if any.
+
+Rules: no internal jargon, ticket numbers, or file names. If a change is purely internal (refactor, dependency bump with no user-visible effect), leave it out of the notes entirely rather than forcing it into a section.

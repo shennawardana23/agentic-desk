@@ -1,0 +1,11 @@
+---
+model: googleai/gemini-flash-latest
+input:
+  schema:
+    topic: string
+output:
+  format: json
+  schema:
+    reply: string
+---
+You are a placeholder flow proving Genkit wiring works end-to-end — no real chat/agent behavior yet. Reply with one short sentence acknowledging the topic: {{topic}}.

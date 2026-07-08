@@ -1,0 +1,172 @@
+# Agentic Desk — full context
+
+> Personal agentic desktop assistant: chat agent, voice speech-to-speech agent, and a Second Brain that exposes the user's coding principles, project context, and interaction history to any MCP-capable coding agent. This file inlines the full content of the core project docs so a model can consume the whole picture without additional fetches. Pre-implementation — no code exists yet.
+
+---
+
+# README.md
+
+## Agentic Desk
+
+A personal agentic desktop assistant: chat agent, voice speech-to-speech agent, and a **Second Brain** that lets any coding agent or harness — Claude Code, other CLIs, IDE agents — know your actual coding principles, active project context, and interaction history, instead of starting from zero every session.
+
+**Status: pre-implementation.** No code exists yet. What exists is the approved design and execution plan for the first sub-project. Nothing in this repo currently runs.
+
+### Pitfalls
+- Wails v3 is alpha; this project intentionally targets Wails v2 (stable).
+- The embedding model string (`gemini-embedding-2`) is unverified against the live Genkit Go SDK — confirm before assuming it works as-is.
+- YouTrack's official MCP server isn't available for external users on the multi-tenant `youtrack.jetbrains.com` cloud — confirm deployment type first.
+- GitHub integration deliberately uses the native `google/go-github` SDK, not MCP.
+- The Agent Loop's self-correction cap (`maxIterations`) must never be removed.
+- "RLHF Annotator" is not literal RLHF — no model weights are trained; it's human-feedback capture that biases future prompts/context.
+
+---
+
+# PRODUCT.md
+
+## The problem
+
+Every coding agent or harness you use — Claude Code, another CLI, an IDE assistant — starts from zero. Each one re-learns your coding principles, has to be re-told your active project's context, and has no memory of past corrections. That context lives scattered across chat transcripts, CLAUDE.md-style config files, and your own head.
+
+## The product
+
+Agentic Desk is a personal desktop application built around a **Second Brain**: a structured, queryable store of your coding-principles profile, per-project context, and interaction history, exposed as an MCP server so any MCP-capable agent can read (and write feedback into) it — not just this app's own chat/voice agents.
+
+## Who it's for
+
+The individual developer who owns this repo — not a multi-tenant product.
+
+## Why it's differentiated
+
+- Deterministic, non-hallucinated profile import (literal, auditable, source-traceable parser, not an LLM summarizer).
+- Always reachable, not just when the app is open (headless core process architecture).
+- A bounded, honest Agent Loop — self-correction within a hard iteration cap, durable HITL escalation, honest (non-literal) feedback capture instead of overclaimed RLHF.
+- Composable by design — SOLID/SoC package boundaries so each sub-project is independently testable and replaceable.
+
+## Current state
+
+Pre-implementation. Sub-project 1 has an approved design and phase plan.
+
+---
+
+# SYSTEM.md
+
+**Target architecture, not yet built.** See PLAN.md for actual status.
+
+## Process architecture
+
+Two entrypoints, one shared internal codebase. `cmd/core` is headless (owns Second Brain, Genkit runtime, MCP server/client) so external agents stay connected independent of the GUI. `cmd/desktop` (Wails v2 + Vue 3/Pinia/Vue Flow) is a thin client of the same local Gin/WS API external agents use.
+
+Rejected alternatives: monolith desktop (MCP server dies when GUI closes); full microservices (over-engineered for single-user local use).
+
+## Agent Loop primitive
+
+Plan → Act → Observe → Critique/Judge → (pass → Commit) | (correctable, iterations remain → self-correct, re-plan with failure reason) | (exhausted or requiresHuman → HITL escalation via ADK Go 2.0 durable pause/resume → human decision → Feedback Annotator → FeedbackSignal written to Second Brain).
+
+Provider-level retry (rate limits, transport errors) is handled inside Genkit's middleware, a layer below this loop — the Agent Loop only ever sees a semantic Critique verdict, never a provider failure.
+
+---
+
+# DESIGN.md
+
+Full design docs live under `docs/superpowers/specs/`, one per sub-project. Only sub-project 1 (Foundation + Second Brain + Agent Loop) is spec'd so far: `docs/superpowers/specs/2026-07-06-foundation-second-brain-design.md`, approved, not yet implemented. Sub-projects 2-8 (chat pipeline, multi-agent orchestration, voice, flow visualization, tool-agents, tracing/evals, docs hardening) are not yet spec'd.
+
+---
+
+# AGENTS.md
+
+## Current build/test status
+
+Nothing is runnable yet — no go.mod, no cmd/, no code. First task: Phase 0 in PLAN.md.
+
+## Package layout convention
+
+```
+internal/secondbrain/            domain types + Store interface — ZERO framework deps
+internal/secondbrain/postgres/   only package allowed to import pgx/database-sql
+internal/agentloop/              Plan/Act/Observe/Critique loop, bounded self-correction, HITL escalation
+internal/eval/                   Evaluator interface + default deterministic implementation
+internal/importer/               deterministic markdown parser (no LLM calls, ever)
+internal/embedding/              embedder wrapper + bounded worker pool
+internal/genkit/                 Genkit app init, Dotprompt loader, flow registration
+internal/mcp/server/, internal/mcp/client/   Genkit plugins/mcp usage
+internal/tools/github/           native google/go-github SDK, wrapped as a tool
+internal/api/                    Gin + Gorilla WS
+internal/config/                 env loading, fail-fast
+```
+
+Rule: domain packages never import a specific storage or LLM-provider library directly — they depend on interfaces; adapters live in their own sub-package.
+
+## Engineering conventions
+
+SOLID (especially Dependency Inversion and Open/Closed), YAGNI (don't build sub-project N+1 while implementing N), bounded goroutine pools with leak tests, zero-trust verification of external facts before asserting them.
+
+## Documentation obligation
+
+Every implementation change updates documentation in the same change — documentation drift is treated as a bug.
+
+---
+
+# PLAN.md — Sub-project 1: Foundation + Second Brain + Agent Loop
+
+Status: not started. Rule for every phase: land it, verify it, commit only that phase's diff before starting the next.
+
+**Phase 0 — Repo scaffold**: go.mod, cmd/core/main.go, cmd/desktop/main.go, internal/config/. Verify: `go build ./...`, clean `go run ./cmd/core` exit.
+
+**Phase 1 — Database + migrations**: migrations/0001_init.sql (profile_rule, project_context, memory_entry, feedback_signal tables; pgvector extension + 768-dim vector column + index). Verify: run migrations against Postgres+pgvector, inspect schema.
+
+**Phase 2 — Second Brain domain + Postgres adapter**: internal/secondbrain/ (domain types + Store interface, zero framework imports), internal/secondbrain/postgres/ (pgx implementation). Verify: unit tests against fake Store; integration tests via testcontainers-go.
+
+**Phase 3 — Importer**: internal/importer/ deterministic markdown parser over CLAUDE.md/RULES.md/PRINCIPLES.md, diff-by-hash logic. Verify: table-driven tests with fixture markdown, no live LLM calls in this path.
+
+**Phase 4 — Embedding pipeline**: internal/embedding/ Genkit gemini-embedding-2 wrapper (confirm model string first — Open Item #1), bounded worker pool (errgroup, context-cancel + WaitGroup.Wait(timeout) shutdown). Verify: goroutine-leak test, smoke test against live/recorded API.
+
+**Phase 5 — Genkit app + Dotprompt**: internal/genkit/ app init, Dotprompt loader, placeholder flow. Verify: round-trip through Genkit dev harness.
+
+**Phase 6 — Agent Loop primitive + Eval interface**: internal/eval/ (Evaluator interface + deterministic default), internal/agentloop/ (state machine, maxIterations-bounded self-correction, stubbed HITL escalation), internal/agentloop/feedback/ (capture human decision, write FeedbackSignal). Verify: unit tests asserting retry cap honored and HITL escalation fires exactly once at exhaustion.
+
+**Phase 7 — MCP server**: internal/mcp/server/ exposing secondbrain.get_profile, search_memory, log_session, get_project_context as MCP tools. Verify: integration test with a real MCP client.
+
+**Phase 8 — External tool integrations**: internal/mcp/client/ (YouTrack MCP, after confirming deployment type — Open Item #3), internal/tools/github/ (google/go-github, confirm version — Open Item #2). Verify: health-check test confirms YouTrack failure isolation.
+
+**Phase 9 — Core↔GUI API**: internal/api/ Gin routes + Gorilla WS hub. Verify: httptest routes, WS event delivery test.
+
+**Phase 10 — Wails v2 GUI shell**: cmd/desktop/, frontend/ (Vue 3 + Pinia; Vue Flow added but unused until sub-project 5). Verify: manual `wails dev` run, imported profile rules render.
+
+Out of scope: chat/voice behavior, multi-agent A2A orchestration, LLM-as-judge evaluator, flow visualization, full docs suite.
+
+---
+
+# docs/superpowers/specs/2026-07-06-foundation-second-brain-design.md
+
+## Decisions and rationale (summary table)
+
+| Decision | Choice | Why |
+|---|---|---|
+| Language/runtime | Go 1.26.4 | Current stable; Green Tea GC now default |
+| Desktop shell | Wails v2 (not v3) | v3 still alpha; org convention is latest-stable |
+| Frontend | Vue 3 + Pinia + Vue Flow | Pairs with Wails' bridge; Vue Flow built for the agent graph in sub-project 5 |
+| Second Brain storage | PostgreSQL + pgvector | Matches org-wide DB default |
+| LLM/agent framework | Genkit Go 1.0 GA | Verified GA/stable, semver-locked |
+| Multi-agent framework | ADK Go 2.0 GA (June 30 2026) | Graph-based workflow engine, built-in HITL, durable pause/resume |
+| Embedding model | Gemini gemini-embedding-2, 768-dim | Current GA multimodal embedder; model-string acceptance unverified — Open Item #1 |
+| Process architecture | Headless core + thin Wails GUI client | Only approach keeping the Second Brain reachable when GUI is closed |
+| External agent interface | Genkit Go's own plugins/mcp | User required "MCP Genkit" explicitly; supports both client and server roles |
+| GitHub integration | Native google/go-github SDK, wrapped as a tool | Go-native and typed; MCP indirection buys nothing here |
+| YouTrack integration | YouTrack's official remote MCP server | Not available for external users on youtrack.jetbrains.com cloud — Open Item #3 |
+| Profile import | Deterministic parser, not LLM | Zero-trust/no-hallucination requirement |
+| Agent self-correction | Bounded loop (max N iterations), HITL on exhaustion | Unbounded self-correction is a resilience hazard |
+| "RLHF Annotator" | Structured human-feedback capture → preference signal, not literal RLHF | No model weight access; honesty requirement |
+
+## Non-goals for sub-project 1
+
+Chat/voice agent behavior; multi-agent A2A orchestration logic (only MCP plumbing + Agent Loop primitive built here); LLM-as-judge evaluator implementation (only the Evaluator interface + trivial default); flow visualization UI; full docs suite beyond this spec.
+
+## Open items requiring verification at implementation time
+
+- Exact Genkit Go embedder model-string acceptance for gemini-embedding-2
+- Current major version tag of google/go-github
+- Which YouTrack deployment the user runs (self-hosted vs youtrack.jetbrains.com cloud)
+- Exact ADK Go 2.0 API shape for durable pause/resume
+
+(Full design doc, including architecture diagrams, Agent Loop detail, component layout, data flow, error handling, and testing strategy, is at `docs/superpowers/specs/2026-07-06-foundation-second-brain-design.md` — read that file directly for anything not summarized above.)
