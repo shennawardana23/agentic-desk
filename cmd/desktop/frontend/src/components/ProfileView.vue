@@ -104,14 +104,14 @@ const groupedRules = computed(() => {
 }
 .board-header__bg-mark {
   position: absolute;
-  top: -18px; right: -18px;
+  top: 8px; right: -8px;
   width: 130px; height: 130px;
   color: #d97706; opacity: 0.10;
   pointer-events: none;
 }
 .board-header__bg-mark-sm {
   position: absolute; z-index: 0;
-  top: 6px; right: 132px;
+  top: 4.5px; right: 122px;
   width: 36px; height: 36px;
   color: #d97706; opacity: 0.3;
   pointer-events: none;
@@ -119,7 +119,7 @@ const groupedRules = computed(() => {
 }
 .board-header__bg-mark-md {
   position: absolute; z-index: 0;
-  top: 38px; right: 210px;
+  top: 32px; right: 150px;
   width: 60px; height: 60px;
   color: #d97706; opacity: 0.18;
   pointer-events: none;
