@@ -21,7 +21,16 @@ export async function createCapture(onChunk) {
   let stream
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: {
+        sampleRate: 16000,
+        channelCount: 1,
+        // echoCancellation MUST be true on laptops — without it the mic
+        // picks up the agent's speaker output, Gemini transcribes the agent's
+        // own voice as user input, and the agent hallucinates/responds to itself.
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
     })
   } catch (err) {
     // NotAllowedError = permission denied, NotFoundError = no mic hardware
@@ -46,6 +55,8 @@ export async function createCapture(onChunk) {
 
   const source = ctx.createMediaStreamSource(stream)
   const node = new AudioWorkletNode(ctx, 'pcm-capture-processor')
+  // Worklet posts {buffer, rms, noiseFloor, calibrated} — pass the whole
+  // message object so VoiceView can use worklet-computed VAD metadata.
   node.port.onmessage = (e) => onChunk(e.data)
 
   // AudioWorkletNodes only run while part of a connected graph reaching
@@ -74,18 +85,32 @@ export async function createCapture(onChunk) {
  * continuous instead of clicking between them.
  */
 export function createPlayback() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 })
-  // Resume immediately — some browsers start AudioContext suspended until
-  // a user-gesture tick; we're always called from a click handler so this
-  // is safe and prevents silent playback on first chunk.
-  if (ctx.state === 'suspended') ctx.resume()
+  let ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 })
+  let gain = null
   let nextPlayTime = 0
-  const MAX_SCHEDULE_GAP = 0.3  // ponytail: reset cursor if drifted >300ms
+  let needsReinit = false  // false = already initialized below
+
+  function init() {
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 })
+    if (ctx.state === 'suspended') ctx.resume()
+    gain = ctx.createGain()
+    gain.gain.value = 1
+    gain.connect(ctx.destination)
+    nextPlayTime = 0
+    needsReinit = false
+  }
+
+  // Pre-warm on construction — AudioContext() takes 5-15ms to allocate
+  // the hardware audio thread. Doing it now means the first chunk of every
+  // response plays immediately instead of paying that cost mid-stream.
+  init()
 
   return {
-    ctx,
+    get ctx() { return ctx },
     /** @param {ArrayBuffer} chunk raw Int16 PCM at 24kHz mono */
     playChunk(chunk) {
+      if (needsReinit) init()
+
       const int16 = new Int16Array(chunk)
       const float32 = new Float32Array(int16.length)
       for (let i = 0; i < int16.length; i++) {
@@ -96,24 +121,25 @@ export function createPlayback() {
       buffer.copyToChannel(float32, 0)
       const source = ctx.createBufferSource()
       source.buffer = buffer
-      source.connect(ctx.destination)
-      // ponytail: adaptive scheduling — reset cursor if it drifted too far
-      if (nextPlayTime - ctx.currentTime > MAX_SCHEDULE_GAP) {
-        nextPlayTime = ctx.currentTime + 0.05  // small 50ms buffer
-      }
-      const startAt = Math.max(ctx.currentTime, nextPlayTime)
-      source.start(startAt)
-      nextPlayTime = startAt + buffer.duration
+      source.connect(gain)
+      const now = ctx.currentTime
+      if (nextPlayTime < now) nextPlayTime = now
+      source.start(nextPlayTime)
+      nextPlayTime += buffer.duration
     },
     /**
-     * Barge-in: Web Audio has no API to cancel buffer sources already
-     * scheduled in the future, so the only way to hard-stop queued
-     * playback is dropping the cursor back to "now" — anything already
-     * scheduled still plays out its current buffer, but nothing new
-     * queues behind it.
+     * Barge-in: closes the entire AudioContext — this is the ONLY reliable
+     * way to kill already-scheduled BufferSource nodes in Web Audio API.
+     * The next playChunk() call lazily recreates the context. Matches the
+     * production reference pattern (archpublicwebsite-mcp).
      */
     flush() {
-      nextPlayTime = ctx.currentTime
+      if (gain) gain.gain.setValueAtTime(0, ctx.currentTime)
+      ctx.close()
+      // Re-init immediately — don't wait for next playChunk. This pre-warms
+      // the new AudioContext so the first chunk of the new response plays
+      // without paying the 5-15ms AudioContext construction cost mid-stream.
+      init()
     },
     stop() {
       ctx.close()
@@ -159,6 +185,11 @@ export function connectLiveWs({ baseUrl, model, voice, temperature, instructions
     /** @param {ArrayBuffer} chunk */
     sendAudio(chunk) {
       if (ws.readyState === WebSocket.OPEN) ws.send(chunk)
+    },
+    /** @param {string} base64Jpeg base64-encoded JPEG frame */
+    sendVideoFrame(base64Jpeg) {
+      if (ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: 'video_frame', payload: { data: base64Jpeg, mime_type: 'image/jpeg' } }))
     },
     end() {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'end' }))

@@ -34,10 +34,6 @@ func main() {
 		Bind: []interface{}{
 			app,
 		},
-		// Without Mac set at all, Wails' native bridge defaults `zoomable` to
-		// false and explicitly disables the green traffic-light button
-		// (window.go's zoomable-from-Mac.DisableZoom only runs when Mac != nil;
-		// WailsContext.m then does `[button setEnabled:NO]` when !zoomable).
 		Mac: &mac.Options{},
 	})
 	if err != nil {

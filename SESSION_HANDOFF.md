@@ -2,7 +2,40 @@
 
 Living handoff note — read this first in any new session on this repo. Overwrite the status below at the end of every work session; this file always describes *now*, not history (history is `CHANGELOG.md` and, once code review starts, `docs/reviews/`). Read [`PLAN.md`](PLAN.md) and the design doc for full detail — this file is the fast-resume summary, not a replacement for either.
 
-## Status (2026-07-08, Voice Assistant full realtime rebuild + catalog pattern-blur polish, iteration 16)
+## Status (2026-07-09, Barge-in root cause fixed — double-agent-talk eliminated, iteration 18)
+
+**Problem solved:** When user interrupted a long agent response, the agent would still keep talking, and/or a second broken agent response would start on top of the first.
+
+**Root cause (5 bugs, all fixed):**
+
+1. **VAD state not reset on interrupt** — `vadSentEnd=true` survived barge-in. If user had paused before interrupting (causing a prior `ws.end()`), the closure had `vadSentEnd=true`. On barge-in, the speech branch correctly resets it to `false`, but only on the FIRST chunk above threshold. Any brief sub-threshold chunk during barge-in (natural speech level variation) would see `vadSentEnd=false` and count toward the 15-chunk silence window — firing a second `ws.end()` before Gemini even responded to the barge-in. **Fix:** `resetVad` closure ref exposed from `startSession` capture callback; `onInterrupt` calls `resetVad?.()` immediately, zeroing both `vadSilenceChunks` and `vadSentEnd`.
+
+2. **`speakingTimeout` not cleared on interrupt** — 600ms pending timeout could flip `speaking.value` at wrong moment after flush. **Fix:** `clearTimeout(speakingTimeout)` added to `onInterrupt`.
+
+3. **Non-final agent transcript not cleaned on interrupt** — streaming partial agent entries stayed visible and were re-overwritten by the new response, causing visual double-text. **Fix:** `messages.value = messages.value.filter(t => t.isFinal || t.role === 'user')` in `onInterrupt`, matching reference `handleInterrupt()` in `agentlive.js`.
+
+4. **Go drain logic counted text messages as "drained audio"** — `drained++` ran for ALL dequeued messages. Text messages were re-queued but still incremented the counter. Minor correctness bug; slog.Debug would report inflated drain counts. **Fix:** `drained++` moved inside `if m.binary` branch.
+
+5. **Go interrupt signal used non-blocking `writeToCh`** — the interrupt message itself could be silently dropped if `outCh` was full during heavy audio burst. **Fix:** interrupt now uses blocking send: `select { case outCh <- ...: case <-ctx.Done(): }`. Can block for at most one send (buffer 256), not a deadlock risk.
+
+6. **AudioContext not destroyed on flush** — previous `flush()` used `gain.setValueAtTime(0)` + `setValueAtTime(1, now+0.05)` but kept the AudioContext alive with already-scheduled `BufferSource.start()` calls in its timeline. The reference (archpublicwebsite-mcp) destroys and recreates AudioContext. **Fix:** `flush()` now calls `ctx.close()` + sets `needsReinit=true`; `playChunk()` lazily calls `init()` on next invocation (no wasted context during silence).
+
+7. **Agent transcript entries never sealed `isFinal=true`** — Go never sent `TurnComplete`, so the last agent turn always had `isFinal: false` (blinking cursor forever, wiped on next interrupt). **Fix:** `if sc.TurnComplete` in `relayGeminiToBrowser` sends `{role:"agent", text:"", isFinal:true}`; `appendTranscript` now handles the empty-seal sentinel: if `text=="" && isFinal && last.role===payload.role`, just sets `last.isFinal=true` without overwriting text or creating a blank entry.
+
+**Files changed:**
+- `cmd/desktop/frontend/src/components/VoiceView.vue` — `resetVad` ref, `onInterrupt` 4-step handler, `appendTranscript` empty-seal branch, `teardown` nulls `resetVad`
+- `cmd/desktop/frontend/src/lib/voiceLive.js` — `createPlayback`: `flush()` destroys ctx + lazy `needsReinit`, `init()` extracted
+- `internal/voicelive/voicelive.go` — outCh buffer-256 + sender goroutine, drain counts only binary, interrupt uses blocking send, `TurnComplete` sends seal transcript, `relayGeminiToBrowser` takes `chan outMsg` (bidirectional for drain)
+
+**Build:** `go build ./...` clean. `make desktop-frontend` clean. `make build` clean.
+
+**Next session:**
+1. Real device test — verify barge-in actually stops double-talk end to end
+2. Verify `speakingTimeout` race is gone (orb stops pulsing immediately on interrupt)
+3. Verify transcript sealing — last agent turn cursor disappears after turn ends
+4. Consider `ExplicitVADSignal: true` in `LiveConnectConfig` for even tighter turn control
+
+
 
 **VoiceView.vue — complete rebuild.** Audited root cause of `createMediaStreamSource` error: `startLevelMeter(capture.stream)` was called with `undefined` because `createCapture` never returned `.stream`. Fixed in `voiceLive.js` — now returns `{ stop, stream, ctx }`. `startLevelMeter` reuses the same `MediaStream` object (no second `getUserMedia`). `ctx` exposed so `toggleMute` can `suspend()`/`resume()` the AudioWorklet context in-place without killing the WebSocket.
 

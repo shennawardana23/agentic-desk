@@ -1,78 +1,74 @@
 <script setup>
 /**
  * VoiceView.vue — Gemini Live realtime voice assistant.
- *
- * Layout (two-column):
- *   LEFT  280px sidebar: config (voice, temp) + instructions (always shown, editable)
- *   RIGHT flex-column:   topbar → orb-stage (fixed) → transcript feed (fixed, no layout shift) → controls
- *
- * Audio noise handling:
- *   - Noise floor calibration: first 1.5s after capture starts = measure ambient RMS
- *   - Dynamic threshold = noiseFloor * 2.5  (hysteresis prevents flutter)
- *   - audioLevel is only set > 0 when signal exceeds threshold + small decay smoothing
- *
- * Transcript feed:
- *   - Fixed height container, overflow hidden, newest message swaps in from bottom
- *   - Interim (non-final) messages shown at reduced opacity — live "typing" effect
- *   - No scrollbar visible; last 3 messages always visible
+ * Architecture: Pinia store (useVoiceLiveStore) — session lifecycle,
+ * presets, model catalog, transcript, tool pipeline nodes — all mirroring
+ * archpublicwebsite-mcp/ui/src/views/AgentLive.vue infra.
+ * UI styling: our own (custom orb, sidebar, controls).
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { connectLiveWs, createCapture, createPlayback } from '../lib/voiceLive'
+import { HotkeyStatus } from '../../wailsjs/go/main/App'
+import { createCapture, createPlayback } from '../lib/voiceLive'
 import { useCoreStore } from '../stores/core'
+import { useVoiceLiveStore } from '../stores/voicelive'
 
 const core = useCoreStore()
+const vlStore = useVoiceLiveStore()
 
-// ── Agent presets ──────────────────────────────────────────────────────────
-const PRESETS = [
-  { id: 'helpful-ai',  name: 'Helpful AI',       desc: 'Warm general assistant',         icon: '🤖', instruction: 'You are a helpful, warm, concise voice assistant built on Gemini Live. Reply in the language the user spoke. Keep answers short — one to three sentences unless asked for more.' },
-  { id: 'tutor',       name: 'Language Tutor',    desc: 'Interactive language learning',   icon: '📚', instruction: 'You are a patient language tutor. Correct mistakes gently, explain grammar briefly, and encourage the student. Keep responses short and conversational.' },
-  { id: 'creative',    name: 'Creative Partner',  desc: 'Brainstorming & ideas',           icon: '🎨', instruction: 'You are a creative collaborator. Offer imaginative ideas, build on what the user says, and think outside the box. Be enthusiastic and brief.' },
-  { id: 'support',     name: 'Support Agent',     desc: 'Professional support',            icon: '🎧', instruction: 'You are a professional customer support agent. Be polite, clear, and solution-focused. Ask clarifying questions when needed.' },
-  { id: 'coach',       name: 'Life Coach',        desc: 'Motivational guidance',           icon: '💪', instruction: 'You are an empowering life coach. Ask thoughtful questions, reflect feelings back, and offer actionable guidance. Be warm and concise.' },
-  { id: 'meditation',  name: 'Meditation',        desc: 'Guided mindfulness',              icon: '🧘', instruction: 'You are a calm meditation guide. Speak slowly, use soothing language, guide breathing exercises, and help the user find peace.' },
-  { id: 'interviewer', name: 'Interviewer',       desc: 'Job interview practice',          icon: '💼', instruction: 'You are a professional interviewer conducting a mock job interview. Ask standard and behavioral questions, give brief constructive feedback after each answer.' },
-  { id: 'custom',      name: 'Custom',            desc: 'Write your own instructions',     icon: '✏️', instruction: '' },
-]
-
-// Font Awesome icon classes for each preset
-const PRESET_ICON = {
-  'helpful-ai':  'fa-robot',
-  'tutor':       'fa-book-open',
-  'creative':    'fa-palette',
-  'support':     'fa-headset',
-  'coach':       'fa-bullseye',
-  'meditation':  'fa-spa',
-  'interviewer': 'fa-briefcase',
-  'custom':      'fa-pen',
-}
-function presetIconClass(id) { return PRESET_ICON[id] || 'fa-robot' }
-
-const selectedPresetId = ref(localStorage.getItem('vv-preset-id') || 'helpful-ai')
-const showVoiceMenu = ref(false)
-const showPresetMenu = ref(false)
-const transcriptEl = ref(null)
-
-const selectedPreset = computed(() => PRESETS.find(p => p.id === selectedPresetId.value) || PRESETS[0])
-
-// Always-editable instruction: single source of truth.
-// Pre-filled with preset text; user edits are persisted.
-const editableInstruction = ref(
-  localStorage.getItem('vv-instruction') ||
-  (PRESETS.find(p => p.id === (localStorage.getItem('vv-preset-id') || 'helpful-ai')) || PRESETS[0]).instruction
-)
-watch(editableInstruction, v => localStorage.setItem('vv-instruction', v))
-
-// When user picks a preset, prefill instruction (unless they've customised it for that preset).
-// Effective instructions = always editableInstruction
-const instructions = computed(() => editableInstruction.value)
-
-watch(selectedPresetId, (id) => {
-  localStorage.setItem('vv-preset-id', id)
-  const preset = PRESETS.find(p => p.id === id)
-  if (preset && preset.id !== 'custom') editableInstruction.value = preset.instruction
+// ── Global hotkey status ───────────────────────────────────────────────────
+const hotkeyActive = ref(false)
+onMounted(async () => {
+  try { hotkeyActive.value = await HotkeyStatus() } catch {}
+  // Poll once more after 3s in case the hotkey registered just after startup
+  setTimeout(async () => {
+    try { hotkeyActive.value = await HotkeyStatus() } catch {}
+  }, 3000)
 })
 
-function selectPreset(id) { selectedPresetId.value = id; showPresetMenu.value = false }
+// ── Agent presets — from Pinia store (fetched from /api/agent-live/presets) ──
+// presetIconSvg: returns inline SVG path data for each preset icon name
+const PRESET_SVG = {
+  'bot':         '<path d="M12 2a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2z"/><circle cx="9" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="1" fill="currentColor" stroke="none"/><path d="M8 15h8"/>',
+  'languages':   '<path d="M5 8l6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
+  'palette':     '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor" stroke="none"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" stroke="none"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+  'headphones':  '<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>',
+  'gamepad-2':   '<line x1="6" x2="10" y1="11" y2="11"/><line x1="8" x2="8" y1="9" y2="13"/><line x1="15" x2="15.01" y1="12" y2="12"/><line x1="17" x2="17.01" y1="10" y2="10"/><path d="M6 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="6" y="3" width="12" height="4" rx="2"/>',
+  'heart-pulse': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4 .5-2 2 2h6.28"/>',
+  'smile':       '<circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9" stroke-width="3" stroke-linecap="round"/><line x1="15" x2="15.01" y1="9" y2="9" stroke-width="3" stroke-linecap="round"/>',
+  'music':       '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  'pen':         '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+}
+function presetIconSvg(icon) {
+  return PRESET_SVG[icon] || PRESET_SVG['bot']
+}
+
+const showVoiceMenu = ref(false)
+const showPresetMenu = ref(false)
+const presetTriggerEl = ref(null)
+const transcriptEl = ref(null)
+const barsLeft = ref(null)
+
+// Preset menu: positioned with fixed coords from trigger's getBoundingClientRect
+// so it renders outside the sidebar's overflow:auto container without clipping.
+const presetMenuStyle = computed(() => {
+  if (!presetTriggerEl.value) return {}
+  const r = presetTriggerEl.value.getBoundingClientRect()
+  return {
+    position: 'fixed',
+    top: `${r.bottom + 4}px`,
+    left: `${r.left}px`,
+    width: `${r.width}px`,
+    zIndex: 9999,
+  }
+})
+const barsRight = ref(null)
+const videoPreviewEl = ref(null)
+const videoCanvasEl = ref(null)
+
+function selectPreset(id) {
+  vlStore.applyPreset(id)
+  showPresetMenu.value = false
+}
 
 function onDocClick(e) {
   if (!e.target.closest('.vl__voice-instruction--preset')) showPresetMenu.value = false
@@ -81,7 +77,7 @@ function onDocClick(e) {
 onMounted(() => document.addEventListener('click', onDocClick, true))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true))
 
-// ── Voice config ─────────────────────────────────────────────────────────────
+// ── Voice config — from Pinia store ───────────────────────────────────────────
 const FALLBACK_VOICES = [
   'Puck','Charon','Kore','Fenrir','Aoede','Leda','Orus','Zephyr',
   'Umbriel','Callirrhoe','Autonoe','Enceladus','Iapetus','Despina',
@@ -89,51 +85,139 @@ const FALLBACK_VOICES = [
   'Schedar','Gacrux','Pulcherrima','Achird','Zubenelgenubi',
   'Vindemiatrix','Sadachbia','Sadaltager','Sheliak',
 ]
-const voices = ref([])
-const defaultModel = ref('')
-const voiceName = ref(localStorage.getItem('vv-voice') || '')
+const voices = ref(FALLBACK_VOICES)
 const configError = ref('')
 const configLoading = ref(true)
-watch(voiceName, v => localStorage.setItem('vv-voice', v))
+
+// Two-way bindings into the Pinia store (persisted via store actions)
+const voiceName = computed({
+  get: () => vlStore.voiceName,
+  set: v => { vlStore.voiceName = v; localStorage.setItem('vl-voice', v) },
+})
+const temperature = computed({
+  get: () => vlStore.temperature,
+  set: v => { vlStore.temperature = v; localStorage.setItem('vl-temp', String(v)) },
+})
+const instructions = computed({
+  get: () => vlStore.instructions,
+  set: v => { vlStore.instructions = v; localStorage.setItem('vl-instructions', v) },
+})
+const defaultModel = computed(() => vlStore.selectedModelId)
 
 async function loadConfig() {
   configLoading.value = true
   try {
-    const res = await fetch(`${core.baseUrl}/voice/live/config`)
-    if (!res.ok) throw new Error(`${res.status}`)
-    const data = await res.json()
-    voices.value = data.voices?.length ? data.voices : FALLBACK_VOICES
-    defaultModel.value = data.defaultModel || ''
-    if (!voiceName.value || !voices.value.includes(voiceName.value))
-      voiceName.value = voices.value[0]
-  } catch {
-    voices.value = FALLBACK_VOICES
-    if (!voiceName.value) voiceName.value = FALLBACK_VOICES[0]
-  } finally { configLoading.value = false }
+    await Promise.all([vlStore.fetchModels(), vlStore.fetchPresets()])
+    // Also fetch legacy /voice/live/config for voice list
+    try {
+      const r = await fetch(`${core.baseUrl}/voice/live/config`)
+      if (r.ok) { const d = await r.json(); if (d.voices?.length) voices.value = d.voices }
+    } catch {}
+    if (!voices.value.includes(voiceName.value)) voiceName.value = voices.value[0]
+  } catch (e) { configError.value = e.message }
+  finally { configLoading.value = false }
 }
-
-// ── Temperature ───────────────────────────────────────────────────────────────
-const temperature = ref(Number(localStorage.getItem('vv-temp') || '0.8'))
-watch(temperature, v => localStorage.setItem('vv-temp', String(v)))
 
 // ── Session state ─────────────────────────────────────────────────────────────
 const connectionState = ref('idle') // idle | connecting | active | error
 const isStarting = ref(false)
 const isMuted = ref(false)
 const speaking = ref(false)
-const audioLevel = ref(0)    // 0–1, noise-gated and smoothed
+const audioLevel = ref(0)
 const elapsed = ref(0)
 const sessionError = ref('')
-const messages = ref([])     // { role, text, isFinal }
+// transcript from store
+const messages = computed(() => vlStore.transcript)
 
-// Noise-floor calibration
-let noiseFloor = 0.04        // conservative initial value; updated during first 1.5s
+
+// Noise-floor calibration — now computed IN the worklet (chunk-accurate).
+// These module-level vars are kept for the level meter RAF path only.
+let noiseFloor = 0.02
 let noiseCalSamples = 0
-const NOISE_CAL_FRAMES = 10  // ponytail: 0.5s calibration instead of 1.5s
-let prevLevel = 0            // for exponential smoothing
+const NOISE_CAL_FRAMES = 20  // kept for level meter; worklet uses its own counter
+let prevLevel = 0
 
 let ws = null, capture = null, playback = null
 let speakingTimeout = 0, timerId = 0, audioCtx = null, levelRaf = 0
+let resetVad = null
+
+// ── Video (camera / screen share) ─────────────────────────────────────────────
+const videoMode = ref('off')   // 'off' | 'camera' | 'screen'
+let videoStream = null
+let videoFrameTimer = null
+
+// Text chat input (reference pattern: collapsible chat box)
+const showTextInput = ref(false)
+const textMessage = ref('')
+function sendTextMessage() {
+  const t = textMessage.value.trim()
+  if (!t || !ws || ws.readyState !== WebSocket.OPEN) return
+  // Add to transcript immediately (same as reference)
+  vlStore.transcript.push({ role: 'user', text: t, timestamp: Date.now(), isFinal: true })
+  ws.send(JSON.stringify({ type: 'text', payload: { content: t } }))
+  textMessage.value = ''
+}
+
+async function toggleCamera() {
+  if (videoMode.value === 'camera') { stopVideo(); return }
+  if (videoMode.value === 'screen') stopVideo()
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
+      audio: false,
+    })
+    videoMode.value = 'camera'
+    startVideoFrameLoop()
+    // Wire stream into preview element after next tick (ref not yet mounted for new mode)
+    await nextTick()
+    if (videoPreviewEl.value) videoPreviewEl.value.srcObject = videoStream
+  } catch (err) {
+    console.warn('Camera error:', err)
+  }
+}
+
+async function toggleScreen() {
+  if (videoMode.value === 'screen') { stopVideo(); return }
+  if (videoMode.value === 'camera') stopVideo()
+  try {
+    videoStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 5, max: 5 } },
+      audio: false,
+    })
+    // User cancelled picker — getTracks() empty
+    if (!videoStream.getVideoTracks().length) { videoStream.getTracks().forEach(t => t.stop()); return }
+    videoMode.value = 'screen'
+    startVideoFrameLoop()
+    await nextTick()
+    if (videoPreviewEl.value) videoPreviewEl.value.srcObject = videoStream
+    // Stop when user ends share via browser/OS chrome
+    videoStream.getVideoTracks()[0].addEventListener('ended', () => stopVideo())
+  } catch (err) {
+    if (err.name !== 'NotAllowedError') console.warn('Screen share error:', err)
+  }
+}
+
+function startVideoFrameLoop() {
+  if (videoFrameTimer) clearInterval(videoFrameTimer)
+  videoFrameTimer = setInterval(() => {
+    const canvas = videoCanvasEl.value
+    const video = videoPreviewEl.value
+    if (!canvas || !video || video.readyState < 2 || !ws) return
+    const ctx2d = canvas.getContext('2d')
+    ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', videoMode.value === 'screen' ? 0.6 : 0.5)
+    const base64 = dataUrl.split(',')[1]
+    if (base64 && ws?.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: 'video_frame', payload: { data: base64, mime_type: 'image/jpeg' } }))
+  }, 1000)  // 1 FPS — matches Gemini Live API recommendation
+}
+
+function stopVideo() {
+  if (videoFrameTimer) { clearInterval(videoFrameTimer); videoFrameTimer = null }
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null }
+  if (videoPreviewEl.value) videoPreviewEl.value.srcObject = null
+  videoMode.value = 'off'
+}
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 const hasActiveSession = computed(() =>
@@ -149,14 +233,8 @@ const agentState = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (connectionState.value === 'error') return 'Error'
-  if (isStarting.value) return 'Connecting…'
-  if (connectionState.value === 'active') {
-    if (isMuted.value) return 'Muted'
-    if (agentState.value === 'speaking') return 'Speaking…'
-    if (agentState.value === 'listening') return 'Listening…'
-    return 'Live'
-  }
+  if (connectionState.value === 'connecting' || isStarting.value) return 'Connecting…'
+  if (connectionState.value === 'active') return 'Live'
   return 'Idle'
 })
 
@@ -182,15 +260,10 @@ const orbVars = computed(() => {
 })
 
 // ── Level meter with noise-floor calibration ──────────────────────────────────
-function startLevelMeter(stream, ctx) {
+function startLevelMeter(stream) {
   if (!stream || !(stream instanceof MediaStream) || !stream.getAudioTracks().length) return
-  // Reuse capture's AudioContext if available — no need for a third context
-  if (ctx) {
-    audioCtx = ctx
-  } else {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-    if (audioCtx.state === 'suspended') audioCtx.resume()
-  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  if (audioCtx.state === 'suspended') audioCtx.resume()
 
   const src = audioCtx.createMediaStreamSource(stream)
   const analyser = audioCtx.createAnalyser()
@@ -223,7 +296,33 @@ function startLevelMeter(stream, ctx) {
     const alpha = gated > prevLevel ? 0.6 : 0.15
     prevLevel = prevLevel * (1 - alpha) + gated * alpha
 
-    audioLevel.value = isMuted.value ? 0 : Math.min(1, prevLevel * 3)
+    const level = isMuted.value ? 0 : Math.min(1, prevLevel * 3)
+    audioLevel.value = level
+
+    // Drive bar heights directly via DOM — no Vue reactive update,
+    // no flexbox relayout on the orb row, no orb jitter.
+    // Each bar gets a smooth sine-wave height based on its index + time.
+    const t = performance.now() * 0.001
+    const leftEl  = barsLeft.value
+    const rightEl = barsRight.value
+    if (leftEl && rightEl && level > 0) {
+      const lBars = leftEl.children
+      const rBars = rightEl.children
+      for (let i = 0; i < 12; i++) {
+        const h = Math.max(3, 4 + Math.abs(Math.sin((i + t) * 0.7)) * level * 44)
+        const hr = Math.max(3, 4 + Math.abs(Math.sin((11 - i + t) * 0.7)) * level * 44)
+        lBars[i].style.height = h + 'px'
+        rBars[i].style.height = hr + 'px'
+      }
+    } else if (leftEl && rightEl) {
+      // Reset to flat baseline when silent / muted
+      const lBars = leftEl.children
+      const rBars = rightEl.children
+      for (let i = 0; i < 12; i++) {
+        lBars[i].style.height = '3px'
+        rBars[i].style.height = '3px'
+      }
+    }
     levelRaf = requestAnimationFrame(tick)
   }
   levelRaf = requestAnimationFrame(tick)
@@ -232,6 +331,9 @@ function startLevelMeter(stream, ctx) {
 function stopLevelMeter() {
   cancelAnimationFrame(levelRaf)
   audioLevel.value = 0; prevLevel = 0
+  // Reset noise calibration so next session re-calibrates from scratch.
+  // Stale noiseFloor from a previous session causes wrong VAD threshold.
+  noiseFloor = 0.04; noiseCalSamples = 0
   audioCtx?.close(); audioCtx = null
 }
 
@@ -239,53 +341,92 @@ function stopLevelMeter() {
 function toggleMute() {
   if (!capture) return
   isMuted.value = !isMuted.value
-  isMuted.value ? capture.ctx?.suspend?.() : capture.ctx?.resume?.()
+  if (isMuted.value) {
+    capture.ctx?.suspend?.()
+    // Reset VAD on mute — stale state causes hallucination on unmute:
+    // - vadRmsSmooth frozen low  → fires ws.end() on first chunk after unmute
+    // - vadSilenceChunks at 5/6 → one more chunk triggers spurious turn-end
+    // - vadSentEnd stale         → wrong state for next user turn
+    resetVad?.()
+  } else {
+    capture.ctx?.resume?.()
+    // Also reset on unmute so stale smoothed RMS doesn't fire a
+    // false turn-end or false speech detection immediately
+    resetVad?.()
+  }
 }
 
-// ── Transcript — full turn collection, scrollable ─────────────────────────────
-// Each entry = one complete speaker turn. Interim chunks update the last entry
-// in-place (typewriter effect). On isFinal, the turn is sealed and a new one
-// starts on role-switch. Max 200 turns to prevent memory growth.
+// ── Transcript — decoupled from audio hot path ────────────────────────────────
+// appendTranscript is called from ws.onmessage on every interim chunk.
+// To keep Vue reactivity + DOM scroll off the audio scheduling path, interim
+// payloads are buffered and flushed every 80ms by a timer. Audio chunks in
+// the same window are scheduled into Web Audio BEFORE any Vue re-render fires.
+// isFinal payloads (turn boundaries) flush immediately — they're infrequent.
 const TRANSCRIPT_MAX = 200
+let transcriptQueue = []  // pending interim payloads, drained by flushTimer
+let transcriptTimer = 0   // setInterval handle, active only during a session
+
+function flushTranscript() {
+  if (!transcriptQueue.length) return
+  const batch = transcriptQueue.splice(0)
+  for (const p of batch) applyTranscript(p)
+  nextTick(() => {
+    if (transcriptEl.value)
+      transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight
+  })
+}
 
 function appendTranscript(payload) {
-  // Skip noise-only transcript events
   if (payload.text === '<noise>' || payload.text.includes('<noise>')) return
+  if (payload.isFinal) {
+    if (transcriptQueue.length) flushTranscript()
+    applyTranscript(payload)
+    nextTick(() => {
+      if (transcriptEl.value)
+        transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight
+    })
+    return
+  }
+  // User transcript: show immediately — it’s their own speech, delay feels wrong.
+  // Agent interim: batch in queue (keeps audio scheduling hot path clean).
+  if (payload.role === 'user') {
+    applyTranscript(payload)
+    return
+  }
+  transcriptQueue.push(payload)
+}
 
-  const last = messages.value[messages.value.length - 1]
-
-  // Same role as last entry → update in-place (typewriter effect)
+function applyTranscript(payload) {
+  const t = vlStore.transcript
+  const last = t[t.length - 1]
+  // Empty isFinal=true = TurnComplete seal
+  if (payload.isFinal && payload.text === '' && last && last.role === payload.role) {
+    last.isFinal = true
+    return
+  }
+  // Same role → update in-place (typewriter)
   if (last && last.role === payload.role) {
     last.text = payload.text
     last.isFinal = payload.isFinal
     return
   }
-
-  // Role switch: if last entry was never finalized but has same text, merge
-  // This handles WS sending interleaved user/agent interim chunks
+  // Role-switch merge
   if (payload.isFinal && last && last.text === payload.text && last.role !== payload.role) {
     last.isFinal = true
     return
   }
-
-  // New speaker turn
-  if (messages.value.length >= TRANSCRIPT_MAX) messages.value.splice(0, 1)
-  messages.value.push({ role: payload.role, text: payload.text, isFinal: payload.isFinal })
+  // New turn
+  if (payload.text === '') return
+  if (t.length >= TRANSCRIPT_MAX) t.splice(0, 1)
+  t.push({ role: payload.role, text: payload.text, isFinal: payload.isFinal })
 }
 
-// Auto-scroll transcript to bottom on new content
-watch(() => messages.value.length, async () => {
-  await nextTick()
-  if (transcriptEl.value) {
-    transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight
-  }
-})
-// Also scroll when last message text updates (interim chunks)
-watch(() => messages.value[messages.value.length - 1]?.text, async () => {
-  await nextTick()
-  if (transcriptEl.value) {
-    transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight
-  }
+// Scroll only on new turn (length change) — interim scroll handled in flushTranscript
+watch(() => messages.value.length, () => {
+  nextTick(() => {
+    if (transcriptEl.value)
+      transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight
+  })
 })
 
 // ── Session lifecycle ─────────────────────────────────────────────────────────
@@ -296,61 +437,143 @@ async function startSession() {
   connectionState.value = 'connecting'
   isMuted.value = false
 
-  ws = connectLiveWs({
-    baseUrl: core.baseUrl,
-    model: defaultModel.value,
-    voice: voiceName.value,
-    temperature: temperature.value,
-    instructions: instructions.value,
-    onSessionState: async (payload) => {
+  // Pre-warm AudioContext inside the user-gesture frame (this click handler).
+  // In web/browser mode AudioContext starts suspended until a user gesture.
+  // onSessionState runs from a WS message handler — NOT a gesture frame —
+  // so resume() there is silently ignored by Chrome/Safari.
+  if (!playback) playback = createPlayback()
+  if (playback.ctx.state === 'suspended') playback.ctx.resume()
+
+  // ── Reference session lifecycle (POST /sessions → WS /sessions/:id/stream) ──
+  // Step 1: Create session via REST (gets a session_id)
+  const session = await vlStore.createSession()
+  if (!session) {
+    isStarting.value = false
+    sessionError.value = vlStore.lastError || 'Failed to create session'
+    connectionState.value = 'error'
+    return
+  }
+
+  // Step 2: Connect WebSocket to /api/agent-live/sessions/:id/stream
+  // URL logic:
+  //   - Desktop (Wails): baseUrl = 'http://127.0.0.1:PORT' → ws://127.0.0.1:PORT
+  //   - Web/Vite proxy:  baseUrl = '' → ws://location.host (Vite proxies /api/* to core)
+  //   - HTTPS:           baseUrl = 'https://...' → wss://...
+  const params = new URLSearchParams({
+    voice_name:   voiceName.value,
+    system_text:  instructions.value,
+    temperature:  String(temperature.value),
+  })
+  let wsUrl
+  if (!core.baseUrl || core.baseUrl === '') {
+    // Web/Vite proxy — same origin, let Vite proxy /api to core
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    wsUrl = `${wsProto}//${location.host}/api/agent-live/sessions/${session.id}/stream?${params}`
+  } else {
+    // Desktop or explicit baseUrl
+    const wsProto = core.baseUrl.startsWith('https') ? 'wss:' : 'ws:'
+    const wsHost = core.baseUrl.replace(/^https?:\/\//, '')
+    wsUrl = `${wsProto}//${wsHost}/api/agent-live/sessions/${session.id}/stream?${params}`
+  }
+  ws = new WebSocket(wsUrl)
+  ws.binaryType = 'arraybuffer'
+
+  ws.onerror = () => {
+    sessionError.value = 'WebSocket connection error'
+    connectionState.value = 'error'
+    isStarting.value = false
+    teardown()
+  }
+  ws.onclose = () => {
+    if (connectionState.value !== 'error') connectionState.value = 'idle'
+    isStarting.value = false
+    teardown()
+  }
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) {
+      playback?.playChunk(e.data)
+      if (!speaking.value) speaking.value = true
+      clearTimeout(speakingTimeout)
+      speakingTimeout = setTimeout(() => { speaking.value = false }, 500)
+      return
+    }
+    let msg
+    try { msg = JSON.parse(e.data) } catch { return }
+    // Route all messages through the store (handles transcript, tool_call, tool_result, session_state, interrupt, error)
+    vlStore.handleWSMessage(msg)
+    // Supplement store handling with local audio/VAD side-effects
+    if (msg.type === 'interrupt') {
+      // Kill all scheduled audio immediately
+      playback?.flush()
+      clearTimeout(speakingTimeout)
+      speaking.value = false
+      // Reset VAD so barge-in audio flows without false end-of-turn
+      resetVad?.()
+      // Drop buffered transcript interims from interrupted response
+      transcriptQueue = []
+    }
+    if (msg.type === 'error') {
+      sessionError.value = msg.payload?.message || 'Voice session error'
+      connectionState.value = 'error'
+      isStarting.value = false
+      teardown()
+    }
+    if (msg.type === 'session_state') {
+      const payload = msg.payload
       if (payload.state !== 'active') return
+      // GoAway reconnect — reset playback only
+      if (connectionState.value === 'active') { playback?.flush(); return }
+      // First activation
       connectionState.value = 'active'
       isStarting.value = false
       elapsed.value = 0
       timerId = setInterval(() => elapsed.value++, 1000)
-      playback = createPlayback()
-      try {
-        capture = await createCapture((chunk) => {
-          if (!isMuted.value) ws?.sendAudio(chunk)
+      transcriptTimer = setInterval(flushTranscript, 80)
+      if (!playback) playback = createPlayback()
+      if (playback.ctx.state === 'suspended') playback.ctx.resume()
+      ;(async () => { try {
+        // CONTINUOUS STREAMING — no client-side VAD or turn-end signal.
+        // Gemini Live has its own acoustic VAD. We stream PCM continuously;
+        // Gemini decides when the user has finished and responds immediately.
+        // Removing our artificial silence gate eliminates 120-400ms of added
+        // latency and the hallucination-causing premature AudioStreamEnd signals.
+        resetVad = () => {}  // no-op; kept so toggleMute doesn't break
+
+        capture = await createCapture((msg) => {
+          if (isMuted.value) return
+          // msg = {buffer: ArrayBuffer, rms, noiseFloor, calibrated}
+          if (ws?.readyState === WebSocket.OPEN) ws.send(msg.buffer)
         })
-        startLevelMeter(capture.stream, capture.ctx)
+        startLevelMeter(capture.stream)
       } catch (err) {
         sessionError.value = err?.message || String(err)
         stopSession()
-      }
-    },
-    onTranscript: appendTranscript,
-    onAudio: (chunk) => {
-      playback?.playChunk(chunk)
-      speaking.value = true
-      clearTimeout(speakingTimeout)
-      speakingTimeout = setTimeout(() => (speaking.value = false), 600)
-    },
-    onInterrupt: () => { playback?.flush(); speaking.value = false },
-    onError: (msg) => {
-      sessionError.value = msg
-      connectionState.value = 'error'
-      isStarting.value = false
-      teardown()
-    },
-    onClose: () => {
-      if (connectionState.value !== 'error') connectionState.value = 'idle'
-      isStarting.value = false
-      teardown()
-    },
-  })
+      } })()  // end async IIFE for capture setup
+    }  // end session_state handler
+  }  // end ws.onmessage
 }
 
 function teardown() {
-  clearInterval(timerId); stopLevelMeter()
+  clearInterval(timerId)
+  clearInterval(transcriptTimer); transcriptTimer = 0
+  flushTranscript()
+  transcriptQueue = []
+  stopLevelMeter()
+  stopVideo()                  // stop camera / screen share
   capture?.stop(); capture = null
   playback?.stop(); playback = null
+  resetVad = null
   speaking.value = false; isMuted.value = false
 }
 
 function stopSession() {
-  ws?.end(); ws?.close(); ws = null
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'end' }))
+    ws.close()
+  }
+  ws = null
   teardown()
+  vlStore.endSession()
   if (connectionState.value !== 'error') connectionState.value = 'idle'
 }
 
@@ -425,12 +648,11 @@ onBeforeUnmount(stopSession)
             <span class="vl__sb-title">Voice Assistant</span>
           </div>
           <span v-if="defaultModel" class="vl__model-pill">{{ defaultModel }}</span>
-          <div class="vl__sb-meta-row">
-            <span v-if="hasActiveSession" class="vl__timer">{{ timer }}</span>
-            <span :class="['vl__badge', `vl__badge--${connectionState}`]">
-              <i class="vl__badge-dot" />
-              {{ statusText }}
-            </span>
+          <!-- Hotkey pill -->
+          <div class="vl__hotkey-pill" :class="{ 'vl__hotkey-pill--active': hotkeyActive }">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+            <span v-if="hotkeyActive">⌘⇧Space — show/hide from anywhere</span>
+            <span v-else>Enable Accessibility for ⌘⇧Space shortcut</span>
           </div>
         </div>
       </div>
@@ -487,38 +709,42 @@ onBeforeUnmount(stopSession)
         <div class="vl__instr-head">
           <span class="vl__instr-label">INSTRUCTIONS</span>
           <!-- Preset selector -->
-          <div class="vl__voice-instruction vl__voice-instruction--preset">
+          <div class="vl__voice-instruction vl__voice-instruction--preset" ref="presetTriggerEl">
             <button class="vl__voice-persona-btn" :disabled="hasActiveSession"
               @click.stop="showPresetMenu = !showPresetMenu">
-              <i :class="'fas ' + presetIconClass(selectedPreset.id)" style="width:14px;font-size:12px;color:var(--accent-ai);text-align:center"></i>
-              <span class="vl__voice-persona-name">{{ selectedPreset.name }}</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="presetIconSvg(vlStore.selectedPreset?.icon || 'bot')" />
+              <span class="vl__voice-persona-name">{{ vlStore.selectedPreset?.name || 'Preset' }}</span>
               <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="m6 9 6 6 6-6"/>
               </svg>
             </button>
-            <div v-if="showPresetMenu" class="vl__voice-persona-preset-menu">
-              <div class="vl__voice-persona-preset-section">Agent Presets</div>
-              <button v-for="p in PRESETS" :key="p.id"
-                :class="['vl__voice-persona-preset-opt', { 'vl__voice-persona-preset-opt--on': selectedPresetId === p.id }]"
-                @click="selectPreset(p.id)">
-                <span class="vl__voice-persona-preset-opt-icon"><i :class="'fas ' + presetIconClass(p.id)"></i></span>
-                <div>
-                  <div class="vl__voice-persona-preset-opt-name">{{ p.name }}</div>
-                  <div class="vl__voice-persona-preset-opt-desc">{{ p.desc }}</div>
-                </div>
-              </button>
-            </div>
+            <!-- Teleport dropdown to body so sidebar overflow:auto can't clip it -->
+            <Teleport to="body">
+              <div v-if="showPresetMenu" class="vl__voice-persona-preset-menu"
+                :style="presetMenuStyle">
+                <div class="vl__voice-persona-preset-section">Agent Presets</div>
+                <button v-for="p in vlStore.presets" :key="p.id"
+                  :class="['vl__voice-persona-preset-opt', { 'vl__voice-persona-preset-opt--on': selectedPresetId === p.id }]"
+                  @click="selectPreset(p.id)">
+                  <svg class="vl__voice-persona-preset-opt-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="presetIconSvg(p.icon || 'bot')" />
+                  <div>
+                    <div class="vl__voice-persona-preset-opt-name">{{ p.name }}</div>
+                    <div class="vl__voice-persona-preset-opt-desc">{{ p.desc }}</div>
+                  </div>
+                </button>
+              </div>
+            </Teleport>
           </div>
         </div>
         <!-- Always a textarea — editable when idle, read-only (but visible) when active -->
         <textarea
-          v-model="editableInstruction"
+          v-model="instructions"
           :disabled="hasActiveSession"
           placeholder="System instructions for the voice assistant…"
           class="vl__instr-ta"
         />
         <p class="vl__instr-hint">
-          {{ hasActiveSession ? '🔒 Locked while session active.' : 'Applies on next session start.' }}
+          <template v-if="hasActiveSession"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-1px;margin-right:3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Locked while session active.</template><template v-else>Applies on next session start.</template>
         </p>
       </div>
 
@@ -527,7 +753,7 @@ onBeforeUnmount(stopSession)
     <!-- ═══════════════════════════════════════════════════════
          RIGHT MAIN — topbar · orb-stage · transcript-feed · controls
          ═══════════════════════════════════════════════════════ -->
-    <div class="vl__main">
+    <div class="vl__main" :style="orbVars">
 
       <!-- Error banner only — no topbar, title lives in sidebar -->
       <div v-if="sessionError" class="vl__error-bar" role="alert">
@@ -542,21 +768,28 @@ onBeforeUnmount(stopSession)
         </button>
       </div>
 
-      <!-- ── ORB STAGE — fixed, never grows ── -->
+      <!-- ── ORB STAGE — orb + bars + inline video preview ── -->
       <div class="vl__orb-stage">
 
-        <!-- Mic bars LEFT — 12 bars, amplitude-driven with baseline -->
-        <div class="vl__bars" :class="{ 'vl__bars--active': connectionState === 'active' && !isMuted }">
-          <div v-for="i in 12" :key="i" class="vl__bar"
-            :class="`vl__bar--${agentState}`"
-            :style="connectionState === 'active' && !isMuted
-              ? `height:${Math.max(3, 4 + Math.abs(Math.sin((i + Date.now() * 0.001) * 0.7)) * audioLevel * 44)}px`
-              : 'height:3px'" />
+        <!-- Camera / screen preview — floats top-left inside orb stage -->
+        <div v-if="videoMode !== 'off'" class="vl__video-preview">
+          <video ref="videoPreviewEl" autoplay muted playsinline class="vl__video-preview__video"
+            :style="videoMode === 'camera' ? 'transform:scaleX(-1)' : ''" />
+          <span class="vl__video-preview__badge">
+            <svg viewBox="0 0 8 8" width="5" height="5" fill="currentColor"><circle cx="4" cy="4" r="4"/></svg>
+            {{ videoMode === 'camera' ? 'Camera' : 'Screen' }}
+          </span>
+          <canvas ref="videoCanvasEl" width="320" height="240" style="display:none" />
         </div>
 
-        <!-- Orb — transform-only, zero reflow jitter -->
+        <!-- Mic bars LEFT -->
+        <div class="vl__bars" ref="barsLeft"
+          :class="{ 'vl__bars--active': connectionState === 'active' && !isMuted }">
+          <div v-for="i in 12" :key="i" class="vl__bar" :class="`vl__bar--${agentState}`" />
+        </div>
+
+        <!-- Orb -->
         <div :class="['vl__orb', `vl__orb--${agentState}`]"
-          :style="orbVars"
           role="img"
           :aria-label="`${voiceName} — ${statusText}`">
           <div class="vl__orb-sphere">
@@ -564,9 +797,7 @@ onBeforeUnmount(stopSession)
             <div class="vl__blob vl__blob--2" />
             <div class="vl__blob vl__blob--3" />
           </div>
-          <!-- Speaking pulse ring -->
           <span v-if="agentState === 'speaking'" class="vl__orb-pulse" />
-          <!-- Muted overlay -->
           <div v-if="isMuted" class="vl__orb-mute">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" stroke-width="1.7"
               stroke-linecap="round">
@@ -579,32 +810,23 @@ onBeforeUnmount(stopSession)
         </div>
 
         <!-- Mic bars RIGHT -->
-        <div class="vl__bars" :class="{ 'vl__bars--active': connectionState === 'active' && !isMuted }">
-          <div v-for="i in 12" :key="i" class="vl__bar"
-            :class="`vl__bar--${agentState}`"
-            :style="connectionState === 'active' && !isMuted
-              ? `height:${Math.max(3, 4 + Math.abs(Math.sin((13 - i + Date.now() * 0.001) * 0.7)) * audioLevel * 44)}px`
-              : 'height:3px'" />
+        <div class="vl__bars" ref="barsRight"
+          :class="{ 'vl__bars--active': connectionState === 'active' && !isMuted }">
+          <div v-for="i in 12" :key="i" class="vl__bar" :class="`vl__bar--${agentState}`" />
         </div>
 
       </div><!-- /orb-stage -->
 
-      <!-- Voice name + model -->
-      <div class="vl__identity">
-        <p class="vl__identity-name">{{ voiceName || '—' }}</p>
-        <p v-if="defaultModel" class="vl__identity-model">{{ defaultModel }}</p>
+      <!-- Status row — below orb, never inside it -->
+      <div class="vl__status-row">
+        <span class="vl__orb-timer" :class="{ 'vl__orb-timer--active': hasActiveSession }">
+          {{ hasActiveSession ? timer : '' }}
+        </span>
+        <span v-if="connectionState !== 'error'" :class="['vl__badge', `vl__badge--${connectionState}`]">
+          <i class="vl__badge-dot" />
+          {{ statusText }}
+        </span>
       </div>
-
-      <!-- State label -->
-      <p :class="['vl__state', `vl__state--${agentState}`,
-        { 'vl__state--muted': isMuted, 'vl__state--err': sessionError && !hasActiveSession }]">
-        {{ isMuted ? 'Microphone muted'
-         : agentState === 'speaking' ? 'Speaking…'
-         : agentState === 'listening' ? 'Listening…'
-         : agentState === 'thinking' ? 'Connecting…'
-         : hasActiveSession ? 'Ready — speak now'
-         : 'Start a conversation' }}
-      </p>
 
       <!-- ── TRANSCRIPT — fixed height, scrollable history ── -->
       <div class="vl__transcript" ref="transcriptEl" aria-live="polite" aria-atomic="false">
@@ -632,7 +854,7 @@ onBeforeUnmount(stopSession)
           <div class="vl__turn-body">
             <!-- Label only on first turn, or when speaker changes -->
             <span v-if="i === 0 || messages[i-1].role !== m.role" class="vl__turn-who">
-              {{ m.role === 'user' ? 'You' : selectedPreset.name }}
+              {{ m.role === 'user' ? 'You' : (vlStore.selectedPreset?.name || 'Agent') }}
             </span>
             <p class="vl__turn-text">{{ m.text }}<span v-if="!m.isFinal" class="vl__turn-cursor" /></p>
           </div>
@@ -644,45 +866,73 @@ onBeforeUnmount(stopSession)
         <!-- IDLE/ERROR: Start button -->
         <button v-if="!hasActiveSession" class="vl__btn-start"
           :disabled="isStarting || !voiceName" @click="startSession">
-          <svg v-if="isStarting" class="vl__spin" viewBox="0 0 24 24" width="16" height="16" fill="none"
-            stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-          </svg>
+          <svg v-if="isStarting" class="vl__spin" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>
+          <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           {{ isStarting ? 'Connecting…' : 'Start a conversation' }}
         </button>
 
-        <!-- ACTIVE: Mute + End -->
+        <!-- ACTIVE: tool buttons + Mute + End -->
         <template v-else>
+
+          <!-- Camera -->
+          <button :class="['vl__btn-tool', { 'vl__btn-tool--on': videoMode === 'camera' }]"
+            title="Toggle camera" @click="toggleCamera">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <template v-if="videoMode === 'camera'">
+              <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/>
+              <path d="m22 8-6 4 6 4V8Z"/><line x1="2" y1="2" x2="22" y2="22"/>
+            </template>
+            <template v-else>
+              <path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/>
+            </template>
+          </svg>
+          </button>
+
+          <!-- Screen share -->
+          <button :class="['vl__btn-tool', { 'vl__btn-tool--on': videoMode === 'screen' }]"
+            title="Share screen" @click="toggleScreen">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </button>
+
+          <!-- Mute -->
           <button :class="['vl__btn-mic', `vl__btn-mic--${agentState}`, { 'vl__btn-mic--muted': isMuted }]"
-            :title="isMuted ? 'Unmute microphone' : 'Mute microphone'"
-            @click="toggleMute">
-            <svg v-if="!isMuted" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
-              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
-              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="1" y1="1" x2="23" y2="23"/>
+            :title="isMuted ? 'Unmute' : 'Mute'" @click="toggleMute">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <template v-if="isMuted">
+              <line x1="2" y1="2" x2="22" y2="22"/>
               <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/>
               <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
               <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
+            </template>
+            <template v-else>
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+            </template>
+          </svg>
             <span v-if="!isMuted && agentState === 'listening'" class="vl__btn-mic-ring" />
           </button>
+
+          <!-- Text chat toggle -->
+          <button :class="['vl__btn-tool', { 'vl__btn-tool--on': showTextInput }]"
+            title="Type a message" @click="showTextInput = !showTextInput">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+          </button>
+
+          <!-- End -->
           <button class="vl__btn-end" title="End conversation" @click="stopSession">
-            <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor">
-              <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.28-.28.7-.36 1.06-.2 1.1.37 2.3.57 3.54.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.18 21 3 13.82 3 5c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.2 1.01L6.6 10.8z"/>
-            </svg>
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.86 16m-2.67-3.34A19.79 19.79 0 0 1 2 8.63 2 2 0 0 1 4.11 6.5h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 14.4"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
           </button>
         </template>
+      </div>
+
+      <!-- Collapsible text chat input (reference pattern) -->
+      <div v-if="showTextInput && hasActiveSession" class="vl__text-input">
+        <input v-model="textMessage" placeholder="Type a message (or just speak)…"
+          @keydown.enter="sendTextMessage" />
+        <button :disabled="!textMessage.trim()" @click="sendTextMessage">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        </button>
       </div>
 
     </div><!-- /main -->
@@ -754,15 +1004,15 @@ onBeforeUnmount(stopSession)
 }
 .vl__sb-card-mark {
   position: absolute;
-  top: -16px; right: -16px;
-  width: 110px; height: 110px;
+  top: 5px; right: -5px;
+  width: 110px; height: 111px;
   color: var(--accent-ai); opacity: 0.10;
   pointer-events: none;
 }
 .vl__sb-card-mark-sm {
   position: absolute; z-index: 0;
-  top: 6px;
-  right: 105px;
+  top: 0px;
+  right: 102px;
   width: 36px; height: 36px;
   color: var(--accent-ai); opacity: 0.3;
   pointer-events: none;
@@ -770,8 +1020,8 @@ onBeforeUnmount(stopSession)
 }
 .vl__sb-card-mark-md {
   position: absolute; z-index: 0;
-  top: 38px;
-  right: 175px;
+  top: 30px;
+  right: 133px;
   width: 60px; height: 60px;
   color: var(--accent-ai); opacity: 0.18;
   pointer-events: none;
@@ -886,10 +1136,10 @@ onBeforeUnmount(stopSession)
 .vl__voice-persona-preset { position: relative; }
 /* Menu opens UPWARD — bottom anchored to the trigger */
 .vl__voice-persona-preset-menu {
-  position: absolute; left: 0; right: 0;
+  /* position/top/left/width set inline via presetMenuStyle computed (fixed coords) */
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-md); box-shadow: 0 8px 28px oklch(0 0 0 / 0.18);
-  z-index: 500; padding: 4px 0; max-height: 280px; overflow-y: auto; scrollbar-width: none;
+  border-radius: var(--radius-md); box-shadow: 0 8px 28px oklch(0 0 0 / 0.22);
+  padding: 4px 0; max-height: 280px; overflow-y: auto; scrollbar-width: none;
 }
 .vl__voice-persona-preset-menu::-webkit-scrollbar { display: none; }
 
@@ -939,15 +1189,26 @@ onBeforeUnmount(stopSession)
      Individual children (feed, controls) are fixed-size so no scroll risk. */
   overflow: clip; /* clips scroll but NOT transforms — CSS Overflow L4 */
 }
-.vl__timer {
-  position: absolute; top: 32px; right: 10px; z-index: 2;
-  font-size: 11px; font-variant-numeric: tabular-nums;
-  color: var(--ink-muted); font-family: 'SF Mono','Fira Code',monospace;
+/* Timer — inline in orb-stage row */
+/* Status row — sits below the orb stage, never inside it */
+.vl__status-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 20px 8px;
 }
+.vl__orb-timer {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono','Fira Code',monospace;
+  color: var(--ink-faint); min-width: 36px; text-align: right;
+  opacity: 0; transition: opacity 300ms;
+}
+.vl__orb-timer--active { opacity: 1; }
 
-/* Status badge */
+/* Badge */
 .vl__badge {
-  position: absolute; top: 10px; right: 10px; z-index: 2;
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 9px; border-radius: 100px;
   font-size: 10px; font-weight: 700;
@@ -956,10 +1217,23 @@ onBeforeUnmount(stopSession)
   color: var(--ink-faint);
 }
 .vl__badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
-.vl__badge--active { color: #22c55e; }
-.vl__badge--active .vl__badge-dot { background: #22c55e; animation: dot-blink 2s ease infinite; }
+/* Badge dot for active state — uses persona color so it matches the orb */
+.vl__badge--active { color: var(--c1, var(--accent-ai)); }
+.vl__badge--active .vl__badge-dot { background: var(--c1, var(--accent-ai)); animation: dot-blink 2s ease infinite; }
 .vl__badge--connecting { color: #f59e0b; }
 .vl__badge--connecting .vl__badge-dot { background: #f59e0b; animation: dot-blink 0.7s ease infinite; }
+/* Hotkey status pill */
+.vl__hotkey-pill {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 6px; padding: 3px 8px;
+  border-radius: 999px; font-size: 10px;
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--ink-faint); width: fit-content;
+}
+.vl__hotkey-pill--active {
+  background: color-mix(in srgb, var(--accent-ai) 12%, transparent);
+  color: var(--accent-ai);
+}
 .vl__badge--error { color: #ef4444; }
 .vl__badge--error .vl__badge-dot { background: #ef4444; }
 @keyframes dot-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
@@ -982,12 +1256,50 @@ onBeforeUnmount(stopSession)
 .vl__orb-stage {
   flex: 1;
   min-height: 0;
+  position: relative;   /* anchor for the floating video preview */
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 20px;
-  padding: 28px 20px 16px;
+  padding: 24px 16px;
   overflow: visible;
+}
+
+/* Camera / screen-share preview — floats inside orb stage, top-left corner.
+   position:absolute keeps it out of the flex flow so bars + orb are untouched. */
+.vl__video-preview {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 120px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid var(--accent-ai);
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  z-index: 10;
+  background: #000;
+}
+.vl__video-preview__video {
+  width: 100%;
+  display: block;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+}
+.vl__video-preview__badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  background: color-mix(in srgb, var(--accent-ai) 85%, transparent);
+  color: #fff;
+  border-radius: 3px;
 }
 
 /* Mic activity bars */
@@ -1001,8 +1313,9 @@ onBeforeUnmount(stopSession)
   transition: height 60ms ease, opacity 300ms ease;
 }
 .vl__bars--active .vl__bar { opacity: 0.7; }
-.vl__bar--listening { background: #3b82f6; }
-.vl__bar--speaking  { background: #10b981; }
+/* Bars use persona color for all active states */
+.vl__bar--listening { background: var(--c1, var(--accent-ai)); }
+.vl__bar--speaking  { background: var(--c1, var(--accent-ai)); }
 .vl__bar--thinking  { background: #f59e0b; animation: bar-glow 0.8s ease-in-out infinite alternate; }
 @keyframes bar-glow { 0%{opacity:0.4} 100%{opacity:0.9} }
 
@@ -1019,14 +1332,22 @@ onBeforeUnmount(stopSession)
 .vl__orb--listening { transform: scale(1.00); }
 .vl__orb--speaking  { transform: scale(1.08); }
 
+/* Sphere tints — persona color, visible in both light and dark */
 .vl__orb-sphere {
   position: absolute; inset: 0; border-radius: 50%; overflow: hidden;
   transition: background 0.5s;
-  background: color-mix(in srgb, var(--accent-ai) 5%, transparent);
+  background: color-mix(in srgb, var(--c1, var(--accent-ai)) 6%, transparent);
 }
-.vl__orb--listening .vl__orb-sphere { background: rgba(59,130,246,0.07); }
-.vl__orb--speaking  .vl__orb-sphere { background: rgba(16,185,129,0.09); }
-.vl__orb--thinking  .vl__orb-sphere { background: rgba(245,158,11,0.06); }
+/* listening: persona tint, normal energy */
+.vl__orb--listening .vl__orb-sphere {
+  background: color-mix(in srgb, var(--c1, var(--accent-ai)) 10%, transparent);
+}
+/* speaking: persona tint, more vivid */
+.vl__orb--speaking  .vl__orb-sphere {
+  background: color-mix(in srgb, var(--c1, var(--accent-ai)) 14%, transparent);
+}
+/* thinking: amber — system state, not persona */
+.vl__orb--thinking  .vl__orb-sphere { background: color-mix(in srgb, #f59e0b 8%, transparent); }
 
 /* Blobs — FIXED size/position, only border-radius + color animate */
 .vl__blob { position: absolute; opacity: 0.5; transition: background 0.5s, opacity 0.5s; }
@@ -1041,12 +1362,14 @@ onBeforeUnmount(stopSession)
 .vl__orb--thinking .vl__blob--1 { background:radial-gradient(circle at 30% 30%,#f59e0b,transparent 68%); animation-duration:2.2s; }
 .vl__orb--thinking .vl__blob--2 { background:radial-gradient(circle at 70% 40%,#fbbf24,transparent 68%); animation-duration:1.6s; }
 .vl__orb--thinking .vl__blob--3 { background:radial-gradient(circle at 50% 70%,#fcd34d,transparent 68%); animation-duration:1.1s; }
-.vl__orb--listening .vl__blob--1 { background:radial-gradient(circle at 30% 30%,#3b82f6,transparent 68%); animation-duration:3.5s; }
-.vl__orb--listening .vl__blob--2 { background:radial-gradient(circle at 70% 40%,#60a5fa,transparent 68%); animation-duration:2.8s; }
-.vl__orb--listening .vl__blob--3 { background:radial-gradient(circle at 50% 70%,#93c5fd,transparent 68%); animation-duration:2.2s; }
-.vl__orb--speaking .vl__blob--1 { background:radial-gradient(circle at 30% 30%,#10b981,transparent 68%); opacity:.55; animation-duration:3s; }
-.vl__orb--speaking .vl__blob--2 { background:radial-gradient(circle at 70% 40%,#34d399,transparent 68%); opacity:.5; animation-duration:2.4s; }
-.vl__orb--speaking .vl__blob--3 { background:radial-gradient(circle at 50% 70%,#6ee7b7,transparent 68%); opacity:.45; animation-duration:1.9s; }
+/* Listening — persona color, steady medium pace */
+.vl__orb--listening .vl__blob--1 { background:radial-gradient(circle at 30% 30%,var(--c1,var(--accent-ai)),transparent 68%); opacity:.50; animation-duration:3.5s; }
+.vl__orb--listening .vl__blob--2 { background:radial-gradient(circle at 70% 40%,var(--c2,var(--accent-ai)),transparent 68%); opacity:.42; animation-duration:2.8s; }
+.vl__orb--listening .vl__blob--3 { background:radial-gradient(circle at 50% 70%,var(--c3,var(--accent-ai)),transparent 68%); opacity:.35; animation-duration:2.2s; }
+/* Speaking — persona color, full brightness + fast pulse */
+.vl__orb--speaking .vl__blob--1 { background:radial-gradient(circle at 30% 30%,var(--c1,var(--accent-ai)),transparent 68%); opacity:.65; animation-duration:2s; }
+.vl__orb--speaking .vl__blob--2 { background:radial-gradient(circle at 70% 40%,var(--c2,var(--accent-ai)),transparent 68%); opacity:.58; animation-duration:1.6s; }
+.vl__orb--speaking .vl__blob--3 { background:radial-gradient(circle at 50% 70%,var(--c3,var(--accent-ai)),transparent 68%); opacity:.50; animation-duration:1.2s; }
 
 @keyframes b1 {
   0%  { border-radius:42% 58% 55% 45% / 50% 42% 58% 50%; }
@@ -1067,13 +1390,17 @@ onBeforeUnmount(stopSession)
   100%{ border-radius:45% 55% 50% 50% / 50% 50% 45% 55%; }
 }
 
-/* Speaking pulse ring */
+/* Speaking pulse ring — uses transform only, no inset bleed,
+   so overflow:clip on the parent column cannot crop it. */
 .vl__orb-pulse {
-  position:absolute; inset:-10px; border-radius:50%;
-  border:2px solid #10b981; opacity:0;
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid var(--c1, var(--accent-ai)); opacity: 0;
   animation: orb-ring 1.6s ease-out infinite;
 }
-@keyframes orb-ring { 0%{opacity:.5;transform:scale(.94)} 100%{opacity:0;transform:scale(1.2)} }
+@keyframes orb-ring {
+  0%   { opacity: .55; transform: scale(0.96); }
+  100% { opacity: 0;   transform: scale(1.28); }
+}
 
 /* Muted overlay */
 .vl__orb-mute {
@@ -1120,6 +1447,12 @@ onBeforeUnmount(stopSession)
   gap: 6px;
   scroll-behavior: smooth;
   scrollbar-width: none;
+  /* Frosted glass blur */
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  /* background: color-mix(in srgb, var(--surface) 50%, transparent); */
+  border-radius: var(--radius-lg, 12px);
+  border: 0.05px solid color-mix(in srgb, var(--border, #ffffff20) 35%, transparent);
 }
 .vl__transcript::-webkit-scrollbar { display: none; }
 
@@ -1132,7 +1465,8 @@ onBeforeUnmount(stopSession)
 /* One entry per speaker turn; typewriter update in-place */
 .vl__turn { display: flex; align-items: flex-start; gap: 8px; animation: turn-in 0.12s ease; }
 .vl__turn--user { flex-direction: row-reverse; }
-.vl__turn--interim .vl__turn-text { opacity: 0.6; }
+/* Interim: fade only, no blinking cursor */
+.vl__turn--interim .vl__turn-text { opacity: 0.55; }
 /* Consecutive same-speaker turns sit closer together */
 .vl__turn:not(:first-child) { margin-top: 2px; }
 /* When speaker switches, more breathing room */
@@ -1142,8 +1476,8 @@ onBeforeUnmount(stopSession)
   width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; margin-top: 2px;
 }
-.vl__turn-av--user  { background: var(--accent-soft); color: var(--accent); }
-.vl__turn-av--agent { background: var(--accent-ai-soft); color: var(--accent-ai); }
+.vl__turn-av--user  { background: color-mix(in srgb, var(--accent) 12%, transparent); color: color-mix(in srgb, var(--accent) 60%, var(--ink-faint)); }
+.vl__turn-av--agent { background: color-mix(in srgb, var(--accent-ai) 12%, transparent); color: color-mix(in srgb, var(--accent-ai) 60%, var(--ink-faint)); }
 
 .vl__turn-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; max-width: 88%; }
 .vl__turn--user .vl__turn-body { align-items: flex-end; }
@@ -1158,25 +1492,24 @@ onBeforeUnmount(stopSession)
   padding: 8px 12px; border-radius: var(--radius-md);
 }
 .vl__turn--user .vl__turn-text {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  color: color-mix(in srgb, var(--ink) 60%, transparent);
   border-radius: var(--radius-md) var(--radius-sm) var(--radius-md) var(--radius-md);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .vl__turn--agent .vl__turn-text {
-  background: color-mix(in srgb, var(--accent-ai) 8%, transparent);
+  background: color-mix(in srgb, var(--accent-ai) 4%, transparent);
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
   border-radius: var(--radius-sm) var(--radius-md) var(--radius-md) var(--radius-md);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 @supports not (color: color-mix(in srgb, red 50%, blue)) {
   .vl__turn--user .vl__turn-text  { background: var(--accent-soft); }
   .vl__turn--agent .vl__turn-text { background: var(--accent-ai-soft); }
 }
-/* Blinking cursor on interim streaming turns */
-.vl__turn-cursor {
-  display: inline-block; width: 2px; height: 13px;
-  background: currentColor; margin-left: 2px; vertical-align: text-bottom;
-  animation: blink-cursor 0.8s ease-in-out infinite;
-}
-@keyframes blink-cursor { 0%,100%{opacity:1} 50%{opacity:0} }
-@keyframes turn-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+/* Cursor hidden — opacity fade on .vl__turn--interim is enough */
+.vl__turn-cursor { display: none; }
+@keyframes turn-in { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
 
 /* ── CONTROLS ──────────────────────────────────────────── */
 .vl__controls {
@@ -1227,6 +1560,38 @@ onBeforeUnmount(stopSession)
   cursor: pointer; transition: background 150ms, transform 100ms;
 }
 .vl__btn-end:hover { background: rgba(239,68,68,.22); transform: scale(1.06); }
+
+/* Tool buttons (camera, screen, keyboard) */
+.vl__btn-tool {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--ink-faint); font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 120ms;
+}
+.vl__btn-tool:hover { background: var(--surface-hover); color: var(--ink); }
+.vl__btn-tool--on { border-color: var(--accent-ai); background: color-mix(in srgb, var(--accent-ai) 10%, transparent); color: var(--accent-ai); }
+
+/* Collapsible text chat input */
+.vl__text-input {
+  flex-shrink: 0;
+  display: flex; gap: 6px;
+  padding: 0 20px 14px;
+}
+.vl__text-input input {
+  flex: 1; padding: 8px 12px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 20px;
+  background: var(--surface); color: var(--ink);
+  outline: none;
+}
+.vl__text-input input:focus { border-color: var(--accent-ai); }
+.vl__text-input button {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  border: none; background: var(--accent-ai); color: #fff;
+  font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: opacity 150ms;
+}
+.vl__text-input button:disabled { opacity: 0.35; cursor: default; }
 
 /* Spinner */
 .vl__spin { animation: spin 0.8s linear infinite; }

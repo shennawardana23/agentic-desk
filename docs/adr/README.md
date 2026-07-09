@@ -15,6 +15,7 @@ An ADR documents a significant architectural decision and the rationale behind i
 | 5 | [PCM16 Binary Frames over WebSocket](0005-pcm16-binary-ws.md) | ✅ Accepted |
 | 6 | [Separate Capture and Playback AudioContexts](0006-separate-audio-contexts.md) | ✅ Accepted |
 | 7 | [Persisted Env File for Packaged App Keys](0007-persisted-env-file.md) | ✅ Accepted |
+| 7 | [Persisted Env File for Packaged App Keys](0007-persisted-env-file.md) | ✅ Accepted |
 
 ## ADR Lifecycle
 

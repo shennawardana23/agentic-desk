@@ -25,6 +25,10 @@
         <string>{{.Info.Copyright}}</string>
         <key>NSMicrophoneUsageDescription</key>
         <string>Agentic Desk records your voice messages for the Voice Assistant. Audio goes only to the AI model you configured.</string>
+        <key>NSCameraUsageDescription</key>
+        <string>Agentic Desk can share your camera feed with the Voice Assistant so it can see and respond to what you show it.</string>
+        <key>NSScreenCaptureUsageDescription</key>
+        <string>Agentic Desk can share your screen with the Voice Assistant so it can see and help with what you’re working on.</string>
         {{if .Info.FileAssociations}}
         <key>CFBundleDocumentTypes</key>
         <array>

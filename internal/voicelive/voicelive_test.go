@@ -28,10 +28,20 @@ type fakeSession struct {
 	recvGate chan struct{} // closed to allow Receive to proceed past setup
 }
 
+// testMsg is the client-side wire shape (Payload as raw JSON).
+type testMsg struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
 func (f *fakeSession) SendRealtimeInput(input genai.LiveRealtimeInput) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = append(f.sent, input)
+	return nil
+}
+
+func (f *fakeSession) SendToolResponse(_ genai.LiveSendToolResponseParameters) error {
 	return nil
 }
 
@@ -99,7 +109,7 @@ func TestServe_RelaysAudioAndTranscriptFromGemini(t *testing.T) {
 	defer srv.Close()
 	defer client.Close()
 
-	if err := client.WriteJSON(clientMsg{Type: "start", Payload: mustJSON(t, StartPayload{Voice: "Kore", Temperature: 0.8})}); err != nil {
+	if err := client.WriteJSON(testMsg{Type: "start", Payload: mustJSON(t, StartPayload{Voice: "Kore", Temperature: 0.8})}); err != nil {
 		t.Fatalf("write start: %v", err)
 	}
 
@@ -116,7 +126,7 @@ func TestServe_RelaysAudioAndTranscriptFromGemini(t *testing.T) {
 			gotAudio = data
 			continue
 		}
-		var msg ServerMsg
+		var msg WSMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
@@ -152,7 +162,7 @@ func TestServe_ForwardsMicAudioAsRealtimeInput(t *testing.T) {
 	defer srv.Close()
 	defer client.Close()
 
-	if err := client.WriteJSON(clientMsg{Type: "start", Payload: mustJSON(t, StartPayload{Voice: "Kore"})}); err != nil {
+	if err := client.WriteJSON(testMsg{Type: "start", Payload: mustJSON(t, StartPayload{Voice: "Kore"})}); err != nil {
 		t.Fatalf("write start: %v", err)
 	}
 	client.SetReadDeadline(time.Now().Add(2 * time.Second))
@@ -193,7 +203,7 @@ func TestServe_RejectsNonStartFirstMessage(t *testing.T) {
 	defer srv.Close()
 	defer client.Close()
 
-	if err := client.WriteJSON(clientMsg{Type: "end"}); err != nil {
+	if err := client.WriteJSON(testMsg{Type: "end"}); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	client.SetReadDeadline(time.Now().Add(2 * time.Second))
@@ -201,7 +211,7 @@ func TestServe_RejectsNonStartFirstMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var msg ServerMsg
+	var msg WSMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -232,7 +242,7 @@ func TestServe_ConnectFailureSurfacesAsError(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err := client.WriteJSON(clientMsg{Type: "start", Payload: mustJSON(t, StartPayload{Voice: "Kore"})}); err != nil {
+	if err := client.WriteJSON(testMsg{Type: "start", Payload: mustJSON(t, StartPayload{Voice: "Kore"})}); err != nil {
 		t.Fatalf("write start: %v", err)
 	}
 	client.SetReadDeadline(time.Now().Add(2 * time.Second))
@@ -240,7 +250,7 @@ func TestServe_ConnectFailureSurfacesAsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var msg ServerMsg
+	var msg WSMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

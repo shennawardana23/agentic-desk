@@ -1,48 +1,126 @@
 # AGENTS.md — entry point for coding agents
 
-Read this before making changes in this repo. It's the map of where things are, what conventions to follow, and what's actually runnable right now.
+> **Last updated:** 2026-07-09
+> **Audience:** AI agents and human developers making changes in this repo.
+> **Purpose:** Map of where things are, what conventions to follow, and what's actually runnable.
 
-## Current build/test status
+---
 
-**Nothing is runnable yet.** There is no `go.mod`, no `cmd/`, no code. The first task is Phase 0 in [`PLAN.md`](PLAN.md). Do not write commands here that don't exist — this section must be updated the moment Phase 0 lands with the real `go build`/`go test` invocations.
+## Quick start
 
-Until then, per-phase verification steps are defined in [`PLAN.md`](PLAN.md) — follow those, in order, one phase at a time. Do not skip ahead to a later phase's files.
+```bash
+# Prerequisites
+go version        # needs 1.22+
+node --version    # needs 20+
+psql --version    # optional — core auto-launches with defaults
 
-## Package layout convention (Separation of Concerns)
+# Clone + build
+git clone <repo-url> agentic-desk
+cd agentic-desk
+make build-all    # everything
 
-Target layout, defined in the [sub-project 1 design doc](docs/superpowers/specs/2026-07-06-foundation-second-brain-design.md) Section 5:
+# Run standalone web frontend (browser dev)
+make web
+
+# Package + run desktop app
+make desktop-build
+make configure-key KEY=sk-...   # once
+make desktop-run                # single instance via `open`
+```
+
+## Build status
+
+| Command | What | Status |
+|---------|------|--------|
+| `make build` | Go packages | ✅ |
+| `make desktop-frontend` | Vue.js SPA | ✅ |
+| `make desktop-build` | Wails `.app` | ✅ |
+| `make desktop-run` | Open desktop app | ✅ (no duplicate) |
+| `make web` | Browser dev server | ✅ |
+| `make test` | Go unit tests | ✅ |
+| `make build-all` | Full CI build | ✅ |
+
+## Package layout
 
 ```
-internal/secondbrain/            domain types + Store interface — ZERO framework deps (no pgx, no Genkit types)
-internal/secondbrain/postgres/   the only package allowed to import pgx/database-sql
-internal/agentloop/              Plan/Act/Observe/Critique loop, bounded self-correction, HITL escalation
-internal/eval/                   Evaluator interface + default deterministic implementation
-internal/importer/               deterministic markdown parser (no LLM calls, ever, in this package)
-internal/embedding/              embedder wrapper + bounded worker pool
-internal/genkit/                 Genkit app init, Dotprompt loader, flow registration
-internal/mcp/server/, internal/mcp/client/   Genkit plugins/mcp usage
-internal/tools/github/           native google/go-github SDK, wrapped as a tool
-internal/api/                    Gin + Gorilla WS
-internal/config/                 env loading, fail-fast
+internal/
+├── secondbrain/           Domain types + Store interface  (pure Go, no framework deps)
+├── secondbrain/postgres/  Postgres adapter                (only pgx/import allowed)
+├── agentloop/             Plan → Act → Observe → Critique
+├── voicelive/             Gemini Live API WebSocket relay
+├── eval/                  Evaluator interface + default impl
+├── importer/              Markdown parser                 (no LLM calls)
+├── embedding/             Embedder + bounded worker pool
+├── genkit/                Genkit init + flow registration
+├── api/                   HTTP+WS routes (Gin + Gorilla WS)
+└── config/                Env loading, fail-fast
+
+cmd/
+├── desktop/               Wails desktop shell
+│   └── frontend/          Vue.js SPA
+│       ├── src/components/    All views
+│       ├── src/lib/           SDK + utilities (voiceLive.js, markdown.js)
+│       ├── src/stores/        Pinia stores
+│       └── public/            Static assets (pcm-capture-worklet.js)
+└── core/                   Standalone backend server
 ```
 
-Rule of thumb enforced across this layout: **domain packages (`secondbrain`, `agentloop`, `eval`) never import a specific storage or LLM-provider library directly.** They depend on interfaces; adapters live in their own sub-package. If you find yourself importing `pgx` outside `internal/secondbrain/postgres`, or importing a provider SDK outside `internal/genkit`/`internal/embedding`, stop — that's a SoC violation, not a shortcut.
+**Rule of thumb:** domain packages never import storage or LLM-provider libraries directly. Interfaces live in the domain package; implementations live in sub-packages.
 
-## Engineering conventions
+## Voice pipeline — real-time audio architecture
 
-- SOLID, especially Dependency Inversion (interfaces owned by the domain package, implemented by adapters) and Open/Closed (the `Evaluator` interface exists so sub-project 7's LLM-as-judge can replace the default implementation with zero call-site changes).
-- YAGNI: don't build sub-project N+1's functionality while implementing sub-project N. The design doc's "Non-goals" section for each sub-project is binding, not a suggestion.
-- Goroutines: every pool must be bounded (fixed worker count), every pool must shut down via context-cancel + `WaitGroup.Wait(timeout)`, and every pool needs a goroutine-leak test. See `internal/embedding`'s plan (Phase 4) as the template.
-- Zero-trust on external facts: before asserting an SDK method signature, model identifier, or library version in code or docs, verify it against the live source (package docs, source code) — don't extrapolate from a blog post or an older doc example. The design doc's "Open items requiring verification" list exists for exactly this reason — resolve each one with a real check before writing the code that depends on it, and update the design doc with what you found.
+```
+Mic (16kHz) → AudioWorklet (512-sample chunks) → WS binary → Go relay → Gemini Live API
+                                                                              ↓
+Speaker (24kHz) ← AudioContext (adaptive cursor) ← WS binary ←───────────────+
+```
 
-## Documentation obligation
+**Latency optimizations applied (2026-07-09):**
 
-**Every implementation change updates documentation in the same change** — this is a standing project rule, not optional. If you land Phase 0, update this file's build/test section, update `SESSION_HANDOFF.md`, and add a `docs/reviews/` entry if the change had a review. Documentation drift is treated as a bug.
+| Optimization | Before | After | Saving |
+|-------------|--------|-------|--------|
+| AudioWorklet chunk size | 2048 samples (128ms) | **512 samples (32ms)** | **-96ms** first-word |
+| Playback cursor drift | cumulative | **adaptive reset at 300ms** | **-370ms** drift |
+| Noise calibration | 30 frames (~500ms) | **10 frames (~167ms)** | **-333ms** startup |
+| Level meter double-close | closed shared context | **owns its own context** | crash fixed |
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for full diagrams.
+
+## Documentation (Diátaxis structure)
+
+| Quadrant | Contents | Location |
+|----------|----------|----------|
+| 🔰 Tutorial | Getting started | `docs/guides/getting-started.md` |
+| 📖 How-to | Voice setup, contributing | `docs/guides/` |
+| 📚 Reference | Architecture, ADRs | `docs/ARCHITECTURE.md`, `docs/adr/` |
+| 💡 Explanation | Design documents | `docs/designs/`, `docs/superpowers/specs/` |
+| 🤖 AI-context | LLM-optimized overview | `llms.txt`, `llms-full.txt` |
 
 ## Where to look next
 
-- [`SYSTEM.md`](SYSTEM.md) — architecture diagrams
-- [`MEMORY.md`](MEMORY.md) — Second Brain data model
-- [`SKILL.md`](SKILL.md) — planned agent-skill model (not yet implemented)
-- [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) — what the last session left off at, and exactly what to do next
-- [`docs/adr/`](docs/adr/) — why each major decision was made
+| File | What's inside |
+|------|--------------|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Full architecture with Mermaid diagrams |
+| [`SYSTEM.md`](SYSTEM.md) | System context and model |
+| [`MEMORY.md`](MEMORY.md) | Second Brain data model |
+| [`SKILL.md`](SKILL.md) | Agent skill model |
+| [`PLAN.md`](PLAN.md) | Current implementation phases |
+| [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) | Last session's state |
+| [`docs/adr/`](docs/adr/) | Architecture Decision Records |
+| [`docs/README.md`](docs/README.md) | Full documentation index |
+
+## Common pitfalls
+
+1. **Don't run `make desktop-run` repeatedly** — use `open` (handled by Makefile) to prevent duplicate instances.
+2. **Don't import `pgx` outside `internal/secondbrain/postgres/`** — that's a SoC violation.
+3. **Don't add dependencies for what 10 lines of code can do** — check stdlib first.
+4. **Don't skip verifying SDK method signatures** — verify against live source code, not docs.
+5. **Don't let docs drift** — every change updates docs in the same commit.
+
+## Engineering conventions
+
+- **SOLID** — Dependency Inversion (interfaces owned by domain, adapters in sub-packages)
+- **YAGNI** — build sub-project N before sub-project N+1
+- **Goroutines** — bounded pools, context-cancel shutdown, goroutine-leak tests
+- **Zero-trust** — verify SDK signatures against live source, not blogs
+- **Documentation** — every change updates docs, drift is a bug

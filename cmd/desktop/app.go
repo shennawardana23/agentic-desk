@@ -31,6 +31,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.coreReady = make(chan struct{})
+	// Register global ⌘⇧Space hotkey to toggle this window from anywhere on the desktop.
+	go a.hotkeyLoop(ctx)
 	if override := os.Getenv("CORE_API_URL"); override != "" {
 		close(a.coreReady)
 		return

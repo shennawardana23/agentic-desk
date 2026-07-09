@@ -6,6 +6,7 @@ require (
 	github.com/firebase/genkit/go v1.10.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/go-github/v72 v72.0.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
@@ -13,6 +14,7 @@ require (
 	github.com/pgvector/pgvector-go/pgx v0.4.0
 	github.com/wailsapp/wails/v2 v2.13.0
 	github.com/xeipuuv/gojsonschema v1.2.0
+	golang.design/x/hotkey v0.6.1
 	golang.org/x/sync v0.20.0
 	google.golang.org/adk v1.5.0
 	google.golang.org/genai v1.57.0
@@ -49,7 +51,6 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.15 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect

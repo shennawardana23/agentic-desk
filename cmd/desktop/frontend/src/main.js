@@ -13,8 +13,10 @@ if (import.meta.env.DEV && !window.go) {
   window.go = {
     main: {
       App: {
+        // Empty string = same-origin. Vite proxy forwards /voice, /ws, /api
+        // to WEB_CORE_PORT (9317). No cross-origin, no CORS, no blocked WS.
         CoreAPIURL: async () =>
-          localStorage.getItem('agentic-desk-dev-core-url') || 'http://localhost:9317',
+          localStorage.getItem('agentic-desk-dev-core-url') || '',
         CoreStartupError: async () => '',
       },
     },

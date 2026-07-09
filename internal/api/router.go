@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/firebase/genkit/go/core"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 
 	"github.com/shennawardana23/agentic-desk/internal/chat"
 	"github.com/shennawardana23/agentic-desk/internal/embedding"
@@ -30,6 +32,16 @@ import (
 	"github.com/shennawardana23/agentic-desk/internal/task"
 	"github.com/shennawardana23/agentic-desk/internal/voicelive"
 )
+
+// voiceUpgrader is a dedicated WebSocket upgrader for the voice live endpoint.
+// Larger buffers suit binary audio frames (1-4KB each at 32ms/chunk).
+// TCP_NODELAY is set after upgrade to prevent Nagle buffering of small
+// JSON control frames (transcript ~50-200B, interrupt ~40B).
+var voiceUpgrader = websocket.Upgrader{
+	ReadBufferSize:  4096,
+	WriteBufferSize: 4096,
+	CheckOrigin:     func(*http.Request) bool { return true },
+}
 
 // ChatFlow is what this package needs to run Sarza's conversational flow —
 // an interface, not internal/orchestrator's concrete *core.Flow, so tests can
@@ -678,6 +690,90 @@ func NewRouter(deps Deps) *gin.Engine {
 		serveWS(c, deps.Hub)
 	})
 
+	// ── Agent Live voice API (matches reference /api/agent-live/* routes) ───────
+	vl := deps.VoiceLive // shorthand
+
+	// GET /api/agent-live/models — live-capable model catalog
+	r.GET("/api/agent-live/models", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		c.JSON(http.StatusOK, gin.H{
+			"models":      voicelive.AllModelsGrouped(),
+			"live_models": voicelive.AllLiveModels(),
+		})
+	})
+
+	// GET /api/agent-live/presets — system + user presets
+	r.GET("/api/agent-live/presets", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		c.JSON(http.StatusOK, gin.H{"presets": vl.GetAllPresets()})
+	})
+
+	// POST /api/agent-live/presets — create user preset
+	r.POST("/api/agent-live/presets", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		var req voicelive.CreatePresetRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return
+		}
+		p, err := vl.CreatePreset(c.Request.Context(), req)
+		if err != nil {
+			apiErr(c, http.StatusInternalServerError, "create preset", err); return
+		}
+		c.JSON(http.StatusCreated, p)
+	})
+
+	// POST /api/agent-live/sessions — create session, return session_id
+	r.POST("/api/agent-live/sessions", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		var req voicelive.CreateSessionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return
+		}
+		sess, err := vl.CreateSession(c.Request.Context(), req)
+		if err != nil {
+			apiErr(c, http.StatusInternalServerError, "create session", err); return
+		}
+		c.JSON(http.StatusCreated, sess)
+	})
+
+	// GET /api/agent-live/sessions — list all sessions
+	r.GET("/api/agent-live/sessions", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		c.JSON(http.StatusOK, gin.H{"sessions": vl.ListSessions(c.Request.Context())})
+	})
+
+	// GET /api/agent-live/sessions/:id/stream — WebSocket upgrade for live session
+	r.GET("/api/agent-live/sessions/:id/stream", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		conn, err := voiceUpgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			slog.Error("agent-live ws upgrade failed", "err", err); return
+		}
+		if tc, ok := conn.NetConn().(*net.TCPConn); ok { _ = tc.SetNoDelay(true) }
+		defer conn.Close()
+		sid := c.Param("id")
+		cfg := voicelive.SessionConfig{
+			VoiceName:   c.Query("voice_name"),
+			SystemText:  c.Query("system_text"),
+			Temperature: func() float32 {
+				var t float32; fmt.Sscanf(c.Query("temperature"), "%f", &t); return t
+			}(),
+		}
+		if err := vl.HandleStream(c.Request.Context(), sid, conn, cfg); err != nil {
+			slog.Error("agent-live session error", "err", err, "session", sid)
+		}
+	})
+
+	// POST /api/agent-live/sessions/:id/end — graceful end
+	r.POST("/api/agent-live/sessions/:id/end", func(c *gin.Context) {
+		if vl == nil { c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"}); return }
+		if err := vl.EndSession(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()}); return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	// ── Legacy voice endpoints (kept for backward compat with old frontend) ──────
 	r.GET("/voice/live/config", func(c *gin.Context) {
 		if deps.VoiceLive == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"})
@@ -694,11 +790,12 @@ func NewRouter(deps Deps) *gin.Engine {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "voice live not configured"})
 			return
 		}
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		conn, err := voiceUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			slog.Error("voice live ws upgrade failed", "err", err)
 			return
 		}
+		if tc, ok := conn.NetConn().(*net.TCPConn); ok { _ = tc.SetNoDelay(true) }
 		defer conn.Close()
 		deps.VoiceLive.Serve(c.Request.Context(), conn)
 	})

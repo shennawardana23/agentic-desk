@@ -49,6 +49,10 @@ web:
 		lsof -tiTCP:$(WEB_CORE_PORT) -sTCP:LISTEN 2>/dev/null | xargs -r kill -9; \
 		lsof -tiTCP:$(WEB_PORT) -sTCP:LISTEN 2>/dev/null | xargs -r kill -9 \
 	' EXIT INT TERM; \
+	ENV_FILE="$$HOME/Library/Application Support/agentic-desk/.env"; \
+	if [ -z "$$GEMINI_API_KEY" ] && [ -f "$$ENV_FILE" ]; then \
+		export $$(grep -v '^#' "$$ENV_FILE" | xargs); \
+	fi; \
 	(API_ADDR=$(WEB_API_ADDR) go run ./cmd/core) & \
 	(cd cmd/desktop/frontend && npm run dev -- --port $(WEB_PORT) --strictPort) & \
 	wait

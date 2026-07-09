@@ -1,21 +1,41 @@
 # Agentic Desk
 
-> Personal agentic desktop assistant: chat agent, voice speech-to-speech agent, and a Second Brain that exposes the user's coding principles, project context, and interaction history to any MCP-capable coding agent. Pre-implementation — no code exists yet; sub-project 1 (Foundation + Second Brain + Agent Loop) has an approved design and phase plan.
+> Desktop-native AI second brain — real-time voice assistant, knowledge graph, skill/prompt catalogs.
+> https://github.com/arcipelago-international/agentic-desk
 
-## Docs
+## Core stack
+- Desktop: Wails v2 (Go → native macOS .app)
+- Frontend: Vue.js 3 (Composition API), Vite, Pinia
+- Backend: Go 1.22+, Gin, Gorilla WebSocket
+- AI: Google Gemini Live API + Genkit SDK (google.golang.org/genai v1.57.0)
+- Database: PostgreSQL (local, trust-auth)
+- Audio capture: AudioWorklet (raw PCM16 @16kHz, 512-sample chunks)
+- Audio playback: Web Audio API (gapless, adaptive cursor)
 
-- [README.md](README.md): start here, get started, pitfalls
-- [PRODUCT.md](PRODUCT.md): vision, problem, differentiation
-- [SYSTEM.md](SYSTEM.md): target architecture, with diagrams
-- [DESIGN.md](DESIGN.md): index of per-sub-project design specs
-- [PLAN.md](PLAN.md): phase-by-phase build plan for sub-project 1
-- [AGENTS.md](AGENTS.md): entry point and conventions for coding agents working in this repo
-- [MEMORY.md](MEMORY.md): the Second Brain's data model and import pipeline
-- [SKILL.md](SKILL.md): planned agent-skill model (not yet implemented)
-- [docs/superpowers/specs/2026-07-06-foundation-second-brain-design.md](docs/superpowers/specs/2026-07-06-foundation-second-brain-design.md): the full approved design for sub-project 1
+## Key files
+- AGENTS.md — entry point for developers/agents
+- docs/ARCHITECTURE.md — full architecture with Mermaid diagrams
+- docs/adr/ — Architecture Decision Records
+- docs/superpowers/specs/ — design documents
+- internal/voicelive/voicelive.go — Gemini Live API relay
+- cmd/desktop/frontend/src/lib/voiceLive.js — mic capture + playback SDK
+- cmd/desktop/frontend/public/pcm-capture-worklet.js — AudioWorklet processor
 
-## Optional
+## Build
+- `make desktop-frontend` — Vue.js SPA build
+- `make desktop-build` — Wails desktop .app
+- `make desktop-run` — run app (single instance)
+- `make web` — browser dev server
+- `make test` — Go unit tests
 
-- [docs/adr/](docs/adr/): architecture decision records, one per major decision
-- [docs/explanation/README.md](docs/explanation/README.md): the "why" behind key design choices
-- [SESSION_HANDOFF.md](SESSION_HANDOFF.md): current status and next actionable step
+## Voice pipeline
+Mic → AudioWorklet (512 samples @16kHz, 32ms) → WS Binary → Go relay → Gemini Live API → WS Binary ← AudioContext (24kHz, adaptive cursor) ← Speaker
+
+## Key conventions
+- Domain packages never import storage/LLM libraries directly
+- Every code change updates documentation in the same commit
+- Verify SDK signatures against live source code, not docs
+- YAGNI — build sub-project N before sub-project N+1
+
+## Personas
+The documentation supports four persona roles: New Developer (tutorials), Feature Engineer (how-to guides), Architect (reference docs), and Decision Maker (explanations).
