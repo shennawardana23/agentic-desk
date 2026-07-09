@@ -115,14 +115,11 @@ desktop-build:
 desktop-dev:
 	cd cmd/desktop && wails dev
 
-## desktop-run: launch the already-packaged .app directly (also works via
-## `open cmd/desktop/build/bin/agentic-desk.app` or double-clicking in
-## Finder now — cmd/desktop auto-launches its own bundled core, no env
-## var required). CORE_API_URL here is only for pointing at a
-## separately-run core instead. Run `make desktop-build` first if you
-## haven't, or after any code change.
+## desktop-run: open the packaged .app (macOS Launch Services ensures a
+## single instance — re-runs just activate the existing window instead of
+## opening a duplicate). Run `make desktop-build` first if you haven't.
 desktop-run:
-	CORE_API_URL="$(CORE_API_URL)" ./cmd/desktop/build/bin/agentic-desk.app/Contents/MacOS/agentic-desk
+	open /Applications/agentic-desk.app
 
 ## desktop: build + launch the desktop app in one step
 desktop: desktop-build desktop-run
