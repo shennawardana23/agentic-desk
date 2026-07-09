@@ -1,14 +1,59 @@
-# Documentation map
+# Agentic Desk — Documentation
 
-This project's docs follow the [Diátaxis](https://diataxis.fr/) framework (external convention — cited, not fetched live in this session): four quadrants, each answering a different kind of question, kept deliberately separate rather than mixed into one big manual.
+> **Diátaxis structure**: this documentation is organized across four dimensions — Tutorials, How-to Guides, Reference, and Explanation — following the [Diátaxis framework](https://diataxis.fr/).
 
-| Quadrant | Answers | Where |
-|---|---|---|
-| **Tutorials** | "Teach me, step by step" | [`tutorials/`](tutorials/) |
-| **How-to guides** | "Help me do this specific thing" | [`how-to/`](how-to/) |
-| **Reference** | "Tell me the exact facts (API, config, schema)" | [`reference/`](reference/) |
-| **Explanation** | "Help me understand why" | [`explanation/`](explanation/) |
+## Quick Navigation
 
-Right now only `explanation/` has real content, because the "why" behind sub-project 1's design already exists (it's in the approved design doc) — tutorials, how-tos, and reference material don't exist yet because there's no running code for them to describe. See each subdirectory's `README.md` for what's expected to land there and when.
+| Audience | Start Here |
+|----------|-----------|
+| **New developers** | [`../AGENTS.md`](../AGENTS.md) — entry point |
+| **Architecture overview** | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| **System model** | [`../SYSTEM.md`](../SYSTEM.md) |
+| **Data model** | [`../MEMORY.md`](../MEMORY.md) |
+| **Current plan** | [`../PLAN.md`](../PLAN.md) |
+| **Design documents** | [`designs/`](designs/) |
+| **Architecture decisions** | [`adr/`](adr/) |
+| **Past sessions** | [`handoffs/`](handoffs/) |
+| **Project specs** | [`superpowers/specs/`](superpowers/specs/) |
+| **Reviews** | [`reviews/`](reviews/) |
 
-Other documentation entry points at the repo root: [`PRODUCT.md`](../PRODUCT.md), [`SYSTEM.md`](../SYSTEM.md), [`MEMORY.md`](../MEMORY.md), [`SKILL.md`](../SKILL.md), [`AGENTS.md`](../AGENTS.md), [`DESIGN.md`](../DESIGN.md), [`PLAN.md`](../PLAN.md). Historical/decision records: [`docs/adr/`](adr/) and [`docs/reviews/`](reviews/).
+## Documentation Map
+
+```
+docs/
+├── README.md              ← You are here
+├── adr/                   ← Architecture Decision Records
+│   ├── README.md
+│   ├── 0001-use-wails-for-desktop.md
+│   ├── 0002-gemini-live-for-voice.md
+│   └── ...
+├── designs/               ← Design docs for features
+│   └── ...
+├── superpowers/           ← Major sub-project specs
+│   └── specs/
+│       ├── 2026-07-06-foundation-second-brain-design.md
+│       └── 2026-07-08-voice-live-realtime-design.md
+├── reviews/               ← Code review records
+│   └── ...
+├── handoffs/              ← Session handoff records
+│   └── ...
+├── ARCHITECTURE.md        ← Full architecture with diagrams
+├── api/                   ← API documentation
+│   └── voice-live-api.md
+├── operations/            ← Deployment & operations
+│   ├── deploy.md
+│   └── troubleshooting.md
+└── guides/                ← How-to guides
+    ├── getting-started.md
+    ├── voice-assistant.md
+    └── contributing.md
+```
+
+## Diátaxis Quadrants
+
+| Quadrant | What | Where |
+|----------|------|-------|
+| **🔰 Tutorial** | Step-by-step learning | `guides/getting-started.md` |
+| **📖 How-to Guide** | Task-oriented recipes | `guides/voice-assistant.md`, `guides/contributing.md` |
+| **📚 Reference** | Technical specification | `ARCHITECTURE.md`, `adr/`, `api/` |
+| **💡 Explanation** | Background & reasoning | `designs/`, `superpowers/specs/` |

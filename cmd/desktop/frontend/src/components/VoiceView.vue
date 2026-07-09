@@ -129,7 +129,7 @@ const messages = ref([])     // { role, text, isFinal }
 // Noise-floor calibration
 let noiseFloor = 0.04        // conservative initial value; updated during first 1.5s
 let noiseCalSamples = 0
-const NOISE_CAL_FRAMES = 30  // ~1.5s at 50ms poll
+const NOISE_CAL_FRAMES = 10  // ponytail: 0.5s calibration instead of 1.5s
 let prevLevel = 0            // for exponential smoothing
 
 let ws = null, capture = null, playback = null
@@ -182,10 +182,15 @@ const orbVars = computed(() => {
 })
 
 // ── Level meter with noise-floor calibration ──────────────────────────────────
-function startLevelMeter(stream) {
+function startLevelMeter(stream, ctx) {
   if (!stream || !(stream instanceof MediaStream) || !stream.getAudioTracks().length) return
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-  if (audioCtx.state === 'suspended') audioCtx.resume()
+  // Reuse capture's AudioContext if available — no need for a third context
+  if (ctx) {
+    audioCtx = ctx
+  } else {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+  }
 
   const src = audioCtx.createMediaStreamSource(stream)
   const analyser = audioCtx.createAnalyser()
@@ -308,7 +313,7 @@ async function startSession() {
         capture = await createCapture((chunk) => {
           if (!isMuted.value) ws?.sendAudio(chunk)
         })
-        startLevelMeter(capture.stream)
+        startLevelMeter(capture.stream, capture.ctx)
       } catch (err) {
         sessionError.value = err?.message || String(err)
         stopSession()

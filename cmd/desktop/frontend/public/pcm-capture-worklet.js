@@ -14,7 +14,7 @@ class PCMCaptureProcessor extends AudioWorkletProcessor {
     super()
     this.buffer = []
     this.bufferedSamples = 0
-    this.chunkSize = 2048
+    this.chunkSize = 512  // ponytail: 32ms at 16kHz instead of 128ms — faster first-word response
   }
 
   process(inputs) {

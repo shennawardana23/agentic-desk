@@ -1,19 +1,54 @@
 # Architecture Decision Records
 
-Numbered, immutable once accepted. If a decision is later reversed, add a new ADR and mark the old one "Superseded by ADR-00XX" — never edit an accepted ADR's Decision section after the fact.
+This directory contains Architecture Decision Records (ADRs) for the Agentic Desk project.
 
-Format and numbering convention follow the standard ADR practice described at [adr.github.io](https://adr.github.io/) and the `adr-tools` conventions at [github.com/npryce/adr-tools](https://github.com/npryce/adr-tools) (external references — cited as the convention this project follows, not fetched/verified live in this session).
+An ADR documents a significant architectural decision and the rationale behind it. ADRs follow the [established template](https://github.com/joelparkerhenderson/architecture-decision-record).
 
-## Index
+## Active ADRs
 
-| ADR | Title | Status |
-|---|---|---|
-| [0001](0001-go-postgres-pgvector.md) | Go + PostgreSQL + pgvector for the Second Brain | Accepted |
-| [0002](0002-wails-v2-not-v3.md) | Wails v2, not v3 | Accepted |
-| [0003](0003-genkit-go-adk-go.md) | Genkit Go 1.0 GA + ADK Go 2.0 GA | Accepted |
-| [0004](0004-mcp-genkit-not-third-party-sdk.md) | Genkit's own `plugins/mcp`, not a third-party MCP SDK | Accepted |
-| [0005](0005-headless-core-process-architecture.md) | Headless core process + thin GUI shell | Accepted |
-| [0006](0006-deterministic-profile-importer.md) | Deterministic parser for profile import, not an LLM | Accepted |
-| [0007](0007-bounded-agent-loop-honest-rlhf.md) | Bounded Agent Loop + honest (non-literal) RLHF framing | Accepted |
+| # | Title | Status |
+|---|-------|--------|
+| 1 | [Use Wails v2 for Desktop Shell](0001-use-wails-for-desktop.md) | ✅ Accepted |
+| 2 | [Gemini Live API for Real-time Voice](0002-gemini-live-for-voice.md) | ✅ Accepted |
+| 3 | [AudioWorklet for Mic Capture](0003-audioworklet-for-capture.md) | ✅ Accepted |
+| 4 | [Go Backend as Local API Server](0004-go-backend-as-local-api.md) | ✅ Accepted |
+| 5 | [PCM16 Binary Frames over WebSocket](0005-pcm16-binary-ws.md) | ✅ Accepted |
+| 6 | [Separate Capture and Playback AudioContexts](0006-separate-audio-contexts.md) | ✅ Accepted |
+| 7 | [Persisted Env File for Packaged App Keys](0007-persisted-env-file.md) | ✅ Accepted |
 
-All seven derive directly from the [sub-project 1 design doc](../superpowers/specs/2026-07-06-foundation-second-brain-design.md), Section 2 — this ADR set is that table reformatted per-decision, not new rationale.
+## ADR Lifecycle
+
+1. **Proposed** — decision is under discussion
+2. **Accepted** — decision is adopted
+3. **Deprecated** — decision is superseded
+4. **Superseded by** — link to the ADR that replaced it
+
+## Template
+
+```markdown
+# ADR-N: Title
+
+**Status:** Proposed | Accepted | Deprecated
+
+**Date:** YYYY-MM-DD
+
+## Context
+
+What is the issue motivating this decision?
+
+## Decision
+
+What is the change being made?
+
+## Consequences
+
+What becomes easier or harder?
+
+## Compliance
+
+How will compliance be enforced?
+
+## Notes
+
+Any additional context.
+```

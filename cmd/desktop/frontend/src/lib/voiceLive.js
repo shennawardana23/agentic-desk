@@ -80,6 +80,7 @@ export function createPlayback() {
   // is safe and prevents silent playback on first chunk.
   if (ctx.state === 'suspended') ctx.resume()
   let nextPlayTime = 0
+  const MAX_SCHEDULE_GAP = 0.3  // ponytail: reset cursor if drifted >300ms
 
   return {
     ctx,
@@ -96,6 +97,10 @@ export function createPlayback() {
       const source = ctx.createBufferSource()
       source.buffer = buffer
       source.connect(ctx.destination)
+      // ponytail: adaptive scheduling — reset cursor if it drifted too far
+      if (nextPlayTime - ctx.currentTime > MAX_SCHEDULE_GAP) {
+        nextPlayTime = ctx.currentTime + 0.05  // small 50ms buffer
+      }
       const startAt = Math.max(ctx.currentTime, nextPlayTime)
       source.start(startAt)
       nextPlayTime = startAt + buffer.duration
