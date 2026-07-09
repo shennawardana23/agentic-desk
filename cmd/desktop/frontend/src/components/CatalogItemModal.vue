@@ -34,9 +34,10 @@ watch(
   },
 )
 
-async function copyRaw() {
+async function copyContent() {
+  const text = tab.value === 'preview' ? stripFrontmatter(props.content) : props.content
   try {
-    await navigator.clipboard.writeText(props.content)
+    await navigator.clipboard.writeText(text)
     copied.value = true
     setTimeout(() => (copied.value = false), 1500)
   } catch (err) {
@@ -70,7 +71,7 @@ async function onCodeBlockClick(e) {
 
 <template>
   <div class="modal-overlay" @click.self="emit('close')">
-    <div class="modal-panel" role="dialog" aria-modal="true" :aria-label="name">
+    <div class="modal-panel" :class="kind" role="dialog" aria-modal="true" :aria-label="name">
       <header class="modal-head">
         <span class="kind-icon" :class="kind">
           <svg v-if="kind === 'skill'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -106,7 +107,7 @@ async function onCodeBlockClick(e) {
             Raw
           </button>
         </div>
-        <button type="button" class="copy-btn" :class="{ 'is-copied': copied }" :disabled="!content" @click="copyRaw">
+        <button type="button" class="copy-btn" :class="{ 'is-copied': copied }" :disabled="!content" @click="copyContent">
           {{ copied ? 'Copied' : 'Copy' }}
         </button>
       </div>
@@ -170,13 +171,13 @@ async function onCodeBlockClick(e) {
 }
 
 .kind-icon.skill {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: color-mix(in srgb, #0d9488 12%, transparent);
+  color: #0d9488;
 }
 
 .kind-icon.prompt {
-  background: var(--accent-ai-soft);
-  color: var(--accent-ai);
+  background: color-mix(in srgb, #7c3aed 12%, transparent);
+  color: #7c3aed;
 }
 
 .modal-title {
@@ -207,13 +208,13 @@ async function onCodeBlockClick(e) {
 }
 
 .kind-chip.skill {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: color-mix(in srgb, #0d9488 12%, transparent);
+  color: #0d9488;
 }
 
 .kind-chip.prompt {
-  background: var(--accent-ai-soft);
-  color: var(--accent-ai);
+  background: color-mix(in srgb, #7c3aed 12%, transparent);
+  color: #7c3aed;
 }
 
 .modal-close {
@@ -295,6 +296,16 @@ async function onCodeBlockClick(e) {
 .copy-btn.is-copied {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.modal-panel.skill .copy-btn.is-copied {
+  border-color: #0d9488;
+  color: #0d9488;
+}
+
+.modal-panel.prompt .copy-btn.is-copied {
+  border-color: #7c3aed;
+  color: #7c3aed;
 }
 
 .modal-body {

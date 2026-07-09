@@ -47,9 +47,46 @@ onMounted(() => {
 
 <template>
   <section class="panel">
-    <header class="panel-header">
-      <h2>Project Context</h2>
-      <p class="panel-subtitle">The running summary Second Brain keeps for one project.</p>
+    <header class="board-header">
+      <svg class="board-header__bg-mark" viewBox="0 0 131 131" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M53.7421 59.6211L29.8369 60.0105L2 32.1736L25.9052 31.7842L53.7421 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 53.7421L60.0105 29.8183L32.1736 2L31.7842 25.9052L59.6211 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 71.3789L101.163 70.9895L129 98.8264L105.095 99.2158L77.2579 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 77.2579L70.9895 101.182L98.8264 129L99.2158 105.095L71.3789 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 77.2579L60.0105 101.163L32.1736 129L31.7842 105.095L59.6211 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M53.7421 71.3789L29.8369 70.9895L2 98.8264L25.9052 99.2158L53.7421 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 53.7421L70.9895 29.8369L98.8264 2L99.2158 25.9052L71.3789 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 59.6211L101.182 60.0105L129 32.1736L105.095 31.7842L77.2579 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M69.9324 69.9324H61.0676V61.0676H69.9324V69.9324Z" stroke="currentColor" stroke-miterlimit="10"/>
+      </svg>
+      <svg class="board-header__bg-mark-sm" viewBox="0 0 131 131" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M53.7421 59.6211L29.8369 60.0105L2 32.1736L25.9052 31.7842L53.7421 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 53.7421L60.0105 29.8183L32.1736 2L31.7842 25.9052L59.6211 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 71.3789L101.163 70.9895L129 98.8264L105.095 99.2158L77.2579 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 77.2579L70.9895 101.182L98.8264 129L99.2158 105.095L71.3789 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 77.2579L60.0105 101.163L32.1736 129L31.7842 105.095L59.6211 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M53.7421 71.3789L29.8369 70.9895L2 98.8264L25.9052 99.2158L53.7421 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 53.7421L70.9895 29.8369L98.8264 2L99.2158 25.9052L71.3789 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 59.6211L101.182 60.0105L129 32.1736L105.095 31.7842L77.2579 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M69.9324 69.9324H61.0676V61.0676H69.9324V69.9324Z" stroke="currentColor" stroke-miterlimit="10"/>
+      </svg>
+      <svg class="board-header__bg-mark-md" viewBox="0 0 131 131" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M53.7421 59.6211L29.8369 60.0105L2 32.1736L25.9052 31.7842L53.7421 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 53.7421L60.0105 29.8183L32.1736 2L31.7842 25.9052L59.6211 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 71.3789L101.163 70.9895L129 98.8264L105.095 99.2158L77.2579 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 77.2579L70.9895 101.182L98.8264 129L99.2158 105.095L71.3789 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 77.2579L60.0105 101.163L32.1736 129L31.7842 105.095L59.6211 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M53.7421 71.3789L29.8369 70.9895L2 98.8264L25.9052 99.2158L53.7421 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 53.7421L70.9895 29.8369L98.8264 2L99.2158 25.9052L71.3789 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 59.6211L101.182 60.0105L129 32.1736L105.095 31.7842L77.2579 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M69.9324 69.9324H61.0676V61.0676H69.9324V69.9324Z" stroke="currentColor" stroke-miterlimit="10"/>
+      </svg>
+      <div class="board-header__content">
+        <div>
+          <h1>Project Context</h1>
+          <p class="panel-subtitle">The running summary Second Brain keeps for one project.</p>
+        </div>
+      </div>
     </header>
 
     <form class="path-row" @submit.prevent="load">
@@ -77,11 +114,62 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.board-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, #0284c7 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, #0284c7 15%, var(--border));
+  overflow: hidden;
+  padding: 22px 24px 16px;
+  min-height: 104px;
+}
+.board-header__bg-mark {
+  position: absolute;
+  top: -18px; right: -18px;
+  width: 130px; height: 130px;
+  color: #0284c7; opacity: 0.10;
+  pointer-events: none;
+}
+.board-header__bg-mark-sm {
+  position: absolute; z-index: 0;
+  top: 6px; right: 132px;
+  width: 36px; height: 36px;
+  color: #0284c7; opacity: 0.3;
+  pointer-events: none;
+  transform: none;
+}
+.board-header__bg-mark-md {
+  position: absolute; z-index: 0;
+  top: 38px; right: 210px;
+  width: 60px; height: 60px;
+  color: #0284c7; opacity: 0.18;
+  pointer-events: none;
+  transform: none;
+}
+.board-header__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.board-header__content > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.board-header h1 {
+  margin: 0 0 3px;
+  font-size: 22px;
+}
 .panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 640px;
 }
 
 .panel-header h2 {

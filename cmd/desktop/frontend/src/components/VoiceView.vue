@@ -34,6 +34,19 @@ const PRESETS = [
   { id: 'custom',      name: 'Custom',            desc: 'Write your own instructions',     icon: '✏️', instruction: '' },
 ]
 
+// Font Awesome icon classes for each preset
+const PRESET_ICON = {
+  'helpful-ai':  'fa-robot',
+  'tutor':       'fa-book-open',
+  'creative':    'fa-palette',
+  'support':     'fa-headset',
+  'coach':       'fa-bullseye',
+  'meditation':  'fa-spa',
+  'interviewer': 'fa-briefcase',
+  'custom':      'fa-pen',
+}
+function presetIconClass(id) { return PRESET_ICON[id] || 'fa-robot' }
+
 const selectedPresetId = ref(localStorage.getItem('vv-preset-id') || 'helpful-ai')
 const showVoiceMenu = ref(false)
 const showPresetMenu = ref(false)
@@ -62,8 +75,8 @@ watch(selectedPresetId, (id) => {
 function selectPreset(id) { selectedPresetId.value = id; showPresetMenu.value = false }
 
 function onDocClick(e) {
-  if (!e.target.closest('.vl__preset')) showPresetMenu.value = false
-  if (!e.target.closest('.vl__vpick'))  showVoiceMenu.value = false
+  if (!e.target.closest('.vl__voice-instruction--preset')) showPresetMenu.value = false
+  if (!e.target.closest('.vl__voice-persona'))  showVoiceMenu.value = false
 }
 onMounted(() => document.addEventListener('click', onDocClick, true))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true))
@@ -379,24 +392,40 @@ onBeforeUnmount(stopSession)
           <path d="M77.2579 59.6211L101.182 60.0105L129 32.1736L105.095 31.7842L77.2579 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
           <path d="M69.9324 69.9324H61.0676V61.0676H69.9324V69.9324Z" stroke="currentColor" stroke-miterlimit="10"/>
         </svg>
+      <svg class="vl__sb-card-mark-sm" viewBox="0 0 131 131" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M53.7421 59.6211L29.8369 60.0105L2 32.1736L25.9052 31.7842L53.7421 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 53.7421L60.0105 29.8183L32.1736 2L31.7842 25.9052L59.6211 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 71.3789L101.163 70.9895L129 98.8264L105.095 99.2158L77.2579 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 77.2579L70.9895 101.182L98.8264 129L99.2158 105.095L71.3789 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 77.2579L60.0105 101.163L32.1736 129L31.7842 105.095L59.6211 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M53.7421 71.3789L29.8369 70.9895L2 98.8264L25.9052 99.2158L53.7421 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 53.7421L70.9895 29.8369L98.8264 2L99.2158 25.9052L71.3789 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 59.6211L101.182 60.0105L129 32.1736L105.095 31.7842L77.2579 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M69.9324 69.9324H61.0676V61.0676H69.9324V69.9324Z" stroke="currentColor" stroke-miterlimit="10"/>
+      </svg>
+      <svg class="vl__sb-card-mark-md" viewBox="0 0 131 131" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M53.7421 59.6211L29.8369 60.0105L2 32.1736L25.9052 31.7842L53.7421 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 53.7421L60.0105 29.8183L32.1736 2L31.7842 25.9052L59.6211 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 71.3789L101.163 70.9895L129 98.8264L105.095 99.2158L77.2579 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 77.2579L70.9895 101.182L98.8264 129L99.2158 105.095L71.3789 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M59.6211 77.2579L60.0105 101.163L32.1736 129L31.7842 105.095L59.6211 77.2579Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M53.7421 71.3789L29.8369 70.9895L2 98.8264L25.9052 99.2158L53.7421 71.3789Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M71.3789 53.7421L70.9895 29.8369L98.8264 2L99.2158 25.9052L71.3789 53.7421Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M77.2579 59.6211L101.182 60.0105L129 32.1736L105.095 31.7842L77.2579 59.6211Z" stroke="currentColor" stroke-miterlimit="10"/>
+        <path d="M69.9324 69.9324H61.0676V61.0676H69.9324V69.9324Z" stroke="currentColor" stroke-miterlimit="10"/>
+      </svg>
         <!-- Title + status -->
         <div class="vl__sb-card-inner">
           <div class="vl__sb-title-row">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" class="vl__sb-mic">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
             <span class="vl__sb-title">Voice Assistant</span>
           </div>
+          <span v-if="defaultModel" class="vl__model-pill">{{ defaultModel }}</span>
           <div class="vl__sb-meta-row">
             <span v-if="hasActiveSession" class="vl__timer">{{ timer }}</span>
             <span :class="['vl__badge', `vl__badge--${connectionState}`]">
               <i class="vl__badge-dot" />
               {{ statusText }}
             </span>
-            <span v-if="defaultModel" class="vl__model-pill">{{ defaultModel }}</span>
           </div>
         </div>
       </div>
@@ -407,22 +436,22 @@ onBeforeUnmount(stopSession)
         <!-- Voice custom picker -->
         <div class="vl__field">
           <label class="vl__field-label">Voice</label>
-          <div class="vl__vpick">
-            <button class="vl__vpick-btn" :disabled="hasActiveSession"
+          <div class="vl__voice-persona">
+            <button class="vl__voice-persona-btn" :disabled="hasActiveSession"
               @click.stop="showVoiceMenu = !showVoiceMenu">
-              <span class="vl__vpick-dot" :style="`background:oklch(0.6 0.18 ${voiceHue(voiceName)})`" />
-              <span class="vl__vpick-name">{{ voiceName || 'Select voice…' }}</span>
+              <span class="vl__voice-persona-dot" :style="`background:oklch(0.6 0.18 ${voiceHue(voiceName)})`" />
+              <span class="vl__voice-persona-name">{{ voiceName || 'Select voice…' }}</span>
               <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="m6 9 6 6 6-6"/>
               </svg>
             </button>
-            <div v-if="showVoiceMenu" class="vl__vpick-menu">
-              <div v-if="configLoading" class="vl__vpick-loading">Loading voices…</div>
+            <div v-if="showVoiceMenu" class="vl__voice-persona-menu">
+              <div v-if="configLoading" class="vl__voice-persona-loading">Loading voices…</div>
               <button v-for="v in voices" :key="v"
-                :class="['vl__vpick-opt', { 'vl__vpick-opt--on': voiceName === v }]"
+                :class="['vl__voice-persona-opt', { 'vl__voice-persona-opt--on': voiceName === v }]"
                 @click="voiceName = v; showVoiceMenu = false">
-                <span class="vl__vpick-opt-dot" :style="`background:oklch(0.6 0.18 ${voiceHue(v)})`" />
-                <span class="vl__vpick-opt-name">{{ v }}</span>
+                <span class="vl__voice-persona-opt-dot" :style="`background:oklch(0.6 0.18 ${voiceHue(v)})`" />
+                <span class="vl__voice-persona-opt-name">{{ v }}</span>
                 <svg v-if="voiceName === v" viewBox="0 0 12 12" width="11" height="11" fill="none">
                   <path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
@@ -453,24 +482,24 @@ onBeforeUnmount(stopSession)
         <div class="vl__instr-head">
           <span class="vl__instr-label">INSTRUCTIONS</span>
           <!-- Preset selector -->
-          <div class="vl__preset">
-            <button class="vl__preset-btn" :disabled="hasActiveSession"
+          <div class="vl__voice-instruction vl__voice-instruction--preset">
+            <button class="vl__voice-persona-btn" :disabled="hasActiveSession"
               @click.stop="showPresetMenu = !showPresetMenu">
-              <span>{{ selectedPreset.icon }}</span>
-              <span class="vl__preset-name">{{ selectedPreset.name }}</span>
-              <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5">
+              <i :class="'fas ' + presetIconClass(selectedPreset.id)" style="width:14px;font-size:12px;color:var(--accent-ai);text-align:center"></i>
+              <span class="vl__voice-persona-name">{{ selectedPreset.name }}</span>
+              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="m6 9 6 6 6-6"/>
               </svg>
             </button>
-            <div v-if="showPresetMenu" class="vl__preset-menu vl__preset-menu--up">
-              <div class="vl__preset-section">Agent Presets</div>
+            <div v-if="showPresetMenu" class="vl__voice-persona-preset-menu">
+              <div class="vl__voice-persona-preset-section">Agent Presets</div>
               <button v-for="p in PRESETS" :key="p.id"
-                :class="['vl__preset-opt', { 'vl__preset-opt--on': selectedPresetId === p.id }]"
+                :class="['vl__voice-persona-preset-opt', { 'vl__voice-persona-preset-opt--on': selectedPresetId === p.id }]"
                 @click="selectPreset(p.id)">
-                <span class="vl__preset-opt-icon">{{ p.icon }}</span>
+                <span class="vl__voice-persona-preset-opt-icon"><i :class="'fas ' + presetIconClass(p.id)"></i></span>
                 <div>
-                  <div class="vl__preset-opt-name">{{ p.name }}</div>
-                  <div class="vl__preset-opt-desc">{{ p.desc }}</div>
+                  <div class="vl__voice-persona-preset-opt-name">{{ p.name }}</div>
+                  <div class="vl__voice-persona-preset-opt-desc">{{ p.desc }}</div>
                 </div>
               </button>
             </div>
@@ -702,9 +731,10 @@ onBeforeUnmount(stopSession)
   -webkit-backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow-y: auto; scrollbar-width: none;
   overflow-x: visible;     /* allow preset menu to overflow */
 }
+.vl__sidebar::-webkit-scrollbar { display: none; }
 
 /* ── Sidebar header card — board-header pattern ── */
 .vl__sb-card {
@@ -724,6 +754,24 @@ onBeforeUnmount(stopSession)
   color: var(--accent-ai); opacity: 0.10;
   pointer-events: none;
 }
+.vl__sb-card-mark-sm {
+  position: absolute; z-index: 0;
+  top: 6px;
+  right: 105px;
+  width: 36px; height: 36px;
+  color: var(--accent-ai); opacity: 0.3;
+  pointer-events: none;
+  transform: none;
+}
+.vl__sb-card-mark-md {
+  position: absolute; z-index: 0;
+  top: 38px;
+  right: 175px;
+  width: 60px; height: 60px;
+  color: var(--accent-ai); opacity: 0.18;
+  pointer-events: none;
+  transform: none;
+}
 .vl__sb-card-inner {
   position: relative; z-index: 1;
   padding: 14px 14px 12px;
@@ -733,7 +781,7 @@ onBeforeUnmount(stopSession)
   display: flex; align-items: center; gap: 7px;
 }
 .vl__sb-mic { color: var(--accent-ai); flex-shrink: 0; }
-.vl__sb-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+.vl__sb-title { font-size: 15px; font-weight: 700; color: var(--ink); }
 .vl__sb-meta-row {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
@@ -759,42 +807,44 @@ onBeforeUnmount(stopSession)
 .vl__field-err { margin: 0; font-size: 10px; color: #ef4444; line-height: 1.4; }
 
 /* ── Voice custom picker — never spawns native OS dropdown ── */
-.vl__vpick { position: relative; }
-.vl__vpick-btn {
+.vl__voice-persona { position: relative; }
+.vl__voice-instruction { position: relative; flex: 1; }
+.vl__voice-persona-btn {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
   transition: border-color 120ms;
 }
-.vl__vpick-btn:hover:not(:disabled) { border-color: var(--accent-ai); }
-.vl__vpick-btn:disabled { opacity: 0.45; cursor: default; }
-.vl__vpick-dot {
+.vl__voice-persona-btn:hover:not(:disabled) { border-color: var(--accent-ai); }
+.vl__voice-persona-btn:disabled { opacity: 0.45; cursor: default; }
+.vl__voice-persona-dot {
   width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
 }
-.vl__vpick-name { flex: 1; text-align: left; font-weight: 500; }
+.vl__voice-persona-name { flex: 1; text-align: left; font-weight: 500; }
 
 /* Voice picker menu — scrollable, below the button, max 220px */
-.vl__vpick-menu {
+.vl__voice-persona-menu {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-md); box-shadow: 0 8px 28px oklch(0 0 0 / 0.18);
-  z-index: 400; max-height: 220px; overflow-y: auto; padding: 4px 0;
+  z-index: 400; max-height: 220px; overflow-y: auto; scrollbar-width: none; padding: 4px 0;
 }
-.vl__vpick-loading { padding: 10px 12px; font-size: 11px; color: var(--ink-faint); }
-.vl__vpick-opt {
+.vl__voice-persona-menu::-webkit-scrollbar { display: none; }
+.vl__voice-persona-loading { padding: 10px 12px; font-size: 11px; color: var(--ink-faint); }
+.vl__voice-persona-opt {
   display: flex; align-items: center; gap: 8px;
   width: 100%; padding: 7px 12px;
   background: none; border: none; cursor: pointer; text-align: left;
   color: var(--ink); font-size: 12.5px; font: inherit;
   transition: background 80ms;
 }
-.vl__vpick-opt:hover { background: var(--surface-hover); }
-.vl__vpick-opt--on { background: var(--accent-ai-soft); color: var(--accent-ai); font-weight: 600; }
-.vl__vpick-opt-dot {
+.vl__voice-persona-opt:hover { background: var(--surface-hover); }
+.vl__voice-persona-opt--on { background: var(--accent-ai-soft); color: var(--accent-ai); font-weight: 600; }
+.vl__voice-persona-opt-dot {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
 }
-.vl__vpick-opt-name { flex: 1; }
+.vl__voice-persona-opt-name { flex: 1; }
 
 /* Slider */
 .vl__slider-row { display: flex; align-items: center; gap: 6px; }
@@ -804,12 +854,12 @@ onBeforeUnmount(stopSession)
 
 /* Model pill */
 .vl__model-pill {
-  padding: 2px 8px; border-radius: 100px;
-  background: color-mix(in srgb, var(--surface-hover) 80%, transparent);
+  padding: 7px 1px; border-radius: 100px;
+  /* background: color-mix(in srgb, var(--surface-hover) 80%, transparent); */
   font-size: 9.5px; color: var(--ink-faint);
   font-family: 'SF Mono','Fira Code',monospace;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 160px; flex-shrink: 1;
+  display: inline-flex; align-items: center;
+  gap: 4px;
 }
 
 
@@ -820,7 +870,7 @@ onBeforeUnmount(stopSession)
   flex: 1; min-height: 0;
 }
 .vl__instr-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; flex-direction: column; gap: 6px;
 }
 .vl__instr-label {
   font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
@@ -828,43 +878,31 @@ onBeforeUnmount(stopSession)
 }
 
 /* Preset selector — contained in sidebar, menu opens upward */
-.vl__preset { position: relative; }
-.vl__preset-btn {
-  display: flex; align-items: center; gap: 4px;
-  padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  color: var(--ink-muted); font: inherit; font-size: 11px; cursor: pointer;
-  white-space: nowrap; max-width: 140px;
-  transition: border-color 120ms, color 120ms;
-}
-.vl__preset-btn:hover:not(:disabled) { border-color: var(--accent-ai); color: var(--ink); }
-.vl__preset-btn:disabled { opacity: 0.4; cursor: default; }
-.vl__preset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-
+.vl__voice-persona-preset { position: relative; }
 /* Menu opens UPWARD — bottom anchored to the trigger */
-.vl__preset-menu {
-  position: absolute; right: 0;
-  width: 240px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-md); box-shadow: 0 -8px 28px oklch(0 0 0 / 0.16);
-  z-index: 500; padding: 4px 0; max-height: 280px; overflow-y: auto;
+.vl__voice-persona-preset-menu {
+  position: absolute; left: 0; right: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: 0 8px 28px oklch(0 0 0 / 0.18);
+  z-index: 500; padding: 4px 0; max-height: 280px; overflow-y: auto; scrollbar-width: none;
 }
-.vl__preset-menu--up { bottom: calc(100% + 4px); top: auto; }
+.vl__voice-persona-preset-menu::-webkit-scrollbar { display: none; }
 
-.vl__preset-section {
+.vl__voice-persona-preset-section {
   padding: 6px 10px 2px; font-size: 9px; font-weight: 700;
   color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.5px;
 }
-.vl__preset-opt {
+.vl__voice-persona-preset-opt {
   display: flex; align-items: flex-start; gap: 8px;
   width: 100%; padding: 7px 10px;
   background: none; border: none; cursor: pointer; text-align: left; color: var(--ink);
   transition: background 100ms;
 }
-.vl__preset-opt:hover { background: var(--surface-hover); }
-.vl__preset-opt--on { background: var(--accent-ai-soft); color: var(--accent-ai); }
-.vl__preset-opt-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-.vl__preset-opt-name { font-size: 11.5px; font-weight: 600; display: block; }
-.vl__preset-opt-desc {
+.vl__voice-persona-preset-opt:hover { background: var(--surface-hover); }
+.vl__voice-persona-preset-opt--on { background: var(--accent-ai-soft); color: var(--accent-ai); }
+.vl__voice-persona-preset-opt-icon { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.vl__voice-persona-preset-opt-name { font-size: 11.5px; font-weight: 600; display: block; }
+.vl__voice-persona-preset-opt-desc {
   font-size: 9px; color: var(--ink-faint);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
 }
@@ -876,10 +914,11 @@ onBeforeUnmount(stopSession)
   border: 1px solid var(--border); border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg) 75%, transparent);
   color: var(--ink); resize: vertical;
-  /* flex:1 lets it grow to fill sidebar — min keeps it usable */
   flex: 1; min-height: 120px;
   box-sizing: border-box; transition: border-color 120ms;
+  scrollbar-width: none;
 }
+.vl__instr-ta::-webkit-scrollbar { display: none; }
 .vl__instr-ta:focus { outline: none; border-color: var(--accent-ai); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-ai) 12%, transparent); }
 .vl__instr-ta:disabled { opacity: 0.5; cursor: default; background: color-mix(in srgb, var(--surface) 60%, transparent); }
 .vl__instr-hint {
@@ -896,16 +935,20 @@ onBeforeUnmount(stopSession)
   overflow: clip; /* clips scroll but NOT transforms — CSS Overflow L4 */
 }
 .vl__timer {
+  position: absolute; top: 32px; right: 10px; z-index: 2;
   font-size: 11px; font-variant-numeric: tabular-nums;
   color: var(--ink-muted); font-family: 'SF Mono','Fira Code',monospace;
 }
 
 /* Status badge */
 .vl__badge {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 9px; border-radius: 100px;
   font-size: 10px; font-weight: 700;
-  background: var(--surface-hover); color: var(--ink-faint);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  backdrop-filter: blur(2px);
+  color: var(--ink-faint);
 }
 .vl__badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
 .vl__badge--active { color: #22c55e; }
@@ -1071,9 +1114,9 @@ onBeforeUnmount(stopSession)
   flex-direction: column;
   gap: 6px;
   scroll-behavior: smooth;
-  /* thin scrollbar that doesn't shift layout */
   scrollbar-width: none;
 }
+.vl__transcript::-webkit-scrollbar { display: none; }
 
 .vl__transcript-empty {
   display: flex; flex-direction: column; align-items: center; gap: 8px;

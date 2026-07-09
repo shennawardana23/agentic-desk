@@ -18,11 +18,12 @@ import backgroundUrl from './assets/background-desktop.svg'
 // in .content-inner) because it manages its own full-height layout;
 // wrapping it in an auto-height div breaks that (see the vertical-
 // centering bug this exact pattern caused when Home was separate).
-const activeView = ref('chat')
+const activeView = ref(localStorage.getItem('agentic-desk-active-view') || 'chat')
 const sidebarExpanded = ref(false)
 
 function navigate(view) {
   activeView.value = view
+  localStorage.setItem('agentic-desk-active-view', view)
 }
 
 // Theme toggle — a real, working feature (CSS vars already token-based), not a
